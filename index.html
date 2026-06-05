@@ -32,8 +32,10 @@
       display:flex; align-items:center; gap:8px; flex-wrap:wrap;
       padding:8px 10px; background:var(--panel); border-bottom:1px solid var(--line);
     }
-    .brand{display:flex;align-items:center;gap:8px;font-weight:700;margin-right:4px;letter-spacing:-.02em}
-    .brand img{width:24px;height:24px;border-radius:6px;display:block}
+    .brand{display:flex;align-items:center;gap:9px;margin-right:8px}
+    .brand img{width:26px;height:26px;border-radius:6px;display:block}
+    .brand span{font-family:"Trebuchet MS",Verdana,"Segoe UI",system-ui,sans-serif;
+      font-size:21px;font-weight:500;letter-spacing:.3px;color:var(--ink);line-height:1}
     .brand small{font-weight:500;color:var(--muted);font-size:11px}
     .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 4px}
     .spacer{flex:1}
@@ -187,7 +189,7 @@ const MIN_ZOOM = 0.05, MAX_ZOOM = 20, RENDER_SCALE = 2.0;
 const SELECT_PX = 20;      // image-space px to select a peak
 const RIGHTCLICK_PX = 30;  // canvas px to delete on right-click
 const MS_PER_SQUARE = 200; // one large ECG square = 200 ms at 25 mm/s
-const COL = {green:"#2ecc71", orange:"#e67e22", red:"#ef5350", black:"#0a0a0a"};
+const COL = {level:"#0e9aa0", cal:"#7c5cd6", peak:"#2563eb", rr:"#1f2b2f"};  // brand teal / violet / blue
 
 // PDF.js worker: real worker over http(s); fall back to main-thread on file://
 if (location.protocol !== "file:") {
@@ -337,15 +339,22 @@ function label(cx,cy,text,color,size){
   D.lineWidth=3; D.strokeStyle="rgba(255,255,255,.85)"; D.strokeText(text,cx,cy);
   D.fillStyle=color; D.fillText(text,cx,cy);
 }
+function uiScale(){
+  // overlays scale with screen size and zoom, clamped to a usable range
+  const screen = Math.min(1.7, Math.max(0.8, Math.min(cssW,cssH)/850));
+  const zoom   = Math.min(2.4, Math.max(1.0, Math.pow(S.zoom/Math.max(S.fitZoom,1e-3), 0.42)));
+  return screen*zoom;
+}
 function drawLevel(){
   const pts=S.levelPts; if(!pts.length) return;
+  const s=uiScale(), lw=Math.max(1.5,2*s);
   D.setLineDash([]);
-  for(const p of pts){ const [x,y]=i2c(p[0],p[1]); dot(x,y,COL.green,5); }
+  for(const p of pts){ const [x,y]=i2c(p[0],p[1]); dot(x,y,COL.level,5*s); }
   if(pts.length===2){
     const [x1,y1]=i2c(pts[0][0],pts[0][1]), [x2,y2]=i2c(pts[1][0],pts[1][1]);
-    D.strokeStyle=COL.green; D.lineWidth=3;
+    D.strokeStyle=COL.level; D.lineWidth=lw+1;
     D.beginPath(); D.moveTo(x1,y1); D.lineTo(x2,y2); D.stroke();
-    D.lineWidth=2; D.setLineDash([8,5]); D.beginPath();
+    D.lineWidth=lw; D.setLineDash([8*s,5*s]); D.beginPath();
     if(x2!==x1){ const m=(y2-y1)/(x2-x1);
       D.moveTo(0, y1+m*(0-x1)); D.lineTo(cssW, y1+m*(cssW-x1));
     } else { D.moveTo(x1,0); D.lineTo(x1,cssH); }
@@ -354,47 +363,59 @@ function drawLevel(){
 }
 function drawCal(){
   const pts=S.calPts; if(!pts.length) return;
-  D.setLineDash([]); D.lineWidth=2; D.strokeStyle=COL.orange;
+  const s=uiScale(), lw=Math.max(1.5,2*s), tk=8*s;
+  D.setLineDash([]); D.lineWidth=lw; D.strokeStyle=COL.cal;
   const scr = pts.map(p=>i2c(p[0],p[1]));
   for(const [x,y] of scr){
-    D.beginPath(); D.moveTo(x,y-8); D.lineTo(x,y+8); D.stroke();
-    dot(x,y,COL.orange,5);
+    D.beginPath(); D.moveTo(x,y-tk); D.lineTo(x,y+tk); D.stroke();
+    dot(x,y,COL.cal,5*s);
   }
   if(pts.length===2){
     const [a,b]=scr;
-    drawArrow(a[0],a[1],b[0],b[1],COL.orange,2);
+    drawArrow(a[0],a[1],b[0],b[1],COL.cal,lw);
     if(S.pxPerMs){
       const ms = xDist(pts[0],pts[1])/S.pxPerMs;
-      label((a[0]+b[0])/2,(a[1]+b[1])/2-16, ms.toFixed(0)+" ms", COL.orange,13);
+      label((a[0]+b[0])/2,(a[1]+b[1])/2-16*s, ms.toFixed(0)+" ms", COL.cal,13*s);
     }
   }
 }
 function drawPeaks(){
+  const s=uiScale();
+  const L=Math.max(16,28*s);     // vertical stick length (longer)
+  const R=Math.max(5,6.5*s);     // beat circle radius (bigger)
+  const lw=Math.max(1.5,2*s), fs=Math.max(11,12*s);
   D.setLineDash([]);
   S.rPeaks.forEach((p,i)=>{
-    const [x,y]=i2c(p[0],p[1]);
-    D.strokeStyle=COL.red; D.lineWidth=2;
-    D.beginPath(); D.moveTo(x,y-8); D.lineTo(x,y+8); D.stroke();
-    dot(x,y,COL.red,5);
-    label(x,y-16,String(i+1),COL.red,12);
+    const [x,y]=i2c(p[0],p[1]), topY=y-L;
+    // stick from the exact click point up to the circle
+    D.strokeStyle=COL.peak; D.lineWidth=lw;
+    D.beginPath(); D.moveTo(x,y); D.lineTo(x,topY); D.stroke();
+    // small precise marker at the exact click point (where the RR break is)
+    D.beginPath(); D.arc(x,y,Math.max(2,2.4*s),0,7); D.fillStyle=COL.peak; D.fill();
+    D.lineWidth=1; D.strokeStyle="#fff"; D.stroke();
+    // beat circle, lifted up so the click spot stays visible
+    dot(x,topY,COL.peak,R);
+    label(x,topY-R-4*s,String(i+1),COL.peak,fs);
     if(i===S.selectedPeak){
-      D.beginPath(); D.arc(x,y,10,0,7); D.strokeStyle="#000"; D.lineWidth=2; D.stroke();
-      D.beginPath(); D.arc(x,y,10,0,7); D.strokeStyle="#fff"; D.lineWidth=1; D.stroke();
+      const ring=R+Math.max(3,4*s);
+      D.beginPath(); D.arc(x,topY,ring,0,7); D.strokeStyle="#000"; D.lineWidth=Math.max(1.5,2*s); D.stroke();
+      D.beginPath(); D.arc(x,topY,ring,0,7); D.strokeStyle="#fff"; D.lineWidth=1; D.stroke();
     }
   });
+  // RR arrows + labels, above the circles
   for(const rr of calcRR()){
     const [x1,y1]=i2c(rr.p1[0],rr.p1[1]), [x2,y2]=i2c(rr.p2[0],rr.p2[1]);
-    const yTop=Math.min(y1,y2)-34;
-    D.setLineDash([7,4]);
-    drawArrow(x1,yTop,x2,yTop,COL.black,2);
+    const yTop=Math.min(y1,y2)-L-R-18*s;
+    D.setLineDash([7*s,4*s]);
+    drawArrow(x1,yTop,x2,yTop,COL.rr,lw);
     D.setLineDash([]);
-    label((x1+x2)/2,yTop-6, rr.ms+" ms", COL.black,13);
+    label((x1+x2)/2,yTop-6*s, rr.ms+" ms", COL.rr, Math.max(11,13*s));
   }
 }
 function drawArrow(x1,y1,x2,y2,color,w){
   D.strokeStyle=color; D.lineWidth=w;
   D.beginPath(); D.moveTo(x1,y1); D.lineTo(x2,y2); D.stroke();
-  const ah=6, ang=Math.atan2(y2-y1,x2-x1);
+  const ah=Math.max(5,w*3), ang=Math.atan2(y2-y1,x2-x1);
   for(const [ex,ey,a] of [[x1,y1,ang+Math.PI],[x2,y2,ang]]){
     D.beginPath(); D.moveTo(ex,ey);
     D.lineTo(ex-ah*Math.cos(a-0.5), ey-ah*Math.sin(a-0.5));
@@ -435,10 +456,10 @@ function updatePanel(){
     $("#sHR").textContent=$("#sMean").textContent=$("#sRMSSD").textContent=$("#sSDNN").textContent="—";
   }
   $("#mCal").textContent = S.pxPerMs ? S.pxPerMs.toFixed(3)+" px/ms" : "not set";
-  $("#mCal").style.color = S.pxPerMs ? COL.orange : "";
+  $("#mCal").style.color = S.pxPerMs ? COL.cal : "";
   const lvl = S.appliedRotationDeg!==0 ? (signed(S.appliedRotationDeg)+"° (leveled)") : "0.00°";
   $("#mLevel").textContent = lvl;
-  $("#mLevel").style.color = S.appliedRotationDeg!==0 ? COL.green : "";
+  $("#mLevel").style.color = S.appliedRotationDeg!==0 ? COL.level : "";
   $("#mPeaks").textContent = String(S.rPeaks.length);
   // toolbar enable state
   const has = !!S.work;
@@ -547,10 +568,11 @@ canvas.addEventListener("dblclick",e=>{
 canvas.addEventListener("wheel",e=>{
   if(!S.work) return; e.preventDefault();
   if(e.ctrlKey){ const [cx,cy]=evPos(e);
-    const k=e.deltaY>0?0.0012:0.0020;          // zoom OUT a bit slower than in; scales with delta (smooth on trackpads)
+    const k=e.deltaY>0?0.0018:0.0028;          // quicker zoom; out still a touch slower than in
     zoomAt(cx,cy, S.zoom*Math.exp(-e.deltaY*k)); return; }
   let dx=e.deltaX, dy=e.deltaY;            // deltaX = touchpad two-finger horizontal swipe
   if(e.shiftKey){ dx+=dy; dy=0; }          // Shift+wheel → horizontal for traditional mice
+  if(Math.abs(dx)>Math.abs(dy)) dy=0; else dx=0;   // lock panning to one axis at a time
   S.panX-=dx; S.panY-=dy; clampPan(); redraw();
 },{passive:false});
 
@@ -713,10 +735,11 @@ function sessionJSON(){
     levelPts:S.levelPts, calPts:S.calPts, pxPerMs:S.pxPerMs, rPeaks:S.rPeaks,
     exam:S.examPrefill||null};
 }
-function technicalRows(){
+function settingsRows(){
+  // Calibration / level settings only — peak positions now live in the "RR Intervals" tab.
   const lv1=S.levelPts[0]||[null,null], lv2=S.levelPts[1]||[null,null];
   const c1=S.calPts[0]||[null,null], c2=S.calPts[1]||[null,null];
-  const rows=[
+  return [
     ["ecg_file", S.pdfName+".pdf"],
     ["image_rotation_applied_deg", round(S.appliedRotationDeg,6)],
     ["level_angle_deg", 0],
@@ -725,11 +748,7 @@ function technicalRows(){
     ["px_per_ms", S.pxPerMs],
     ["cal_pt1_x",c1[0]],["cal_pt1_y",c1[1]],
     ["cal_pt2_x",c2[0]],["cal_pt2_y",c2[1]],
-    [],
-    ["peak_order","image_x","image_y"],
   ];
-  S.rPeaks.forEach((p,i)=>rows.push([i+1,round(p[0],4),round(p[1],4)]));
-  return rows;
 }
 function round(x,n){ const f=Math.pow(10,n); return x==null?null:Math.round(x*f)/f; }
 function exportXLSX(d){
@@ -740,12 +759,17 @@ function exportXLSX(d){
     [S.pdfName+".pdf", d.exam.subjectId, d.exam.date, d.exam.time, round(d.hr,1), round(d.mean,1),
      d.rmssd==null?null:round(d.rmssd,1), d.sdnn==null?null:round(d.sdnn,1), S.rPeaks.length, d.vals.length]];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(results),"Results");
-  // Tab 2 — RR Intervals
-  const rr=[["order","rr_interval_ms","cumulative_time_ms","instantaneous_hr_bpm"]];
-  let cum=0; d.vals.forEach((v,i)=>{ cum+=v; rr.push([i+1,v,cum,round(60000/v,1)]); });
+  // Tab 2 — RR Intervals + peak positions (one row per peak; this is what gets re-loaded)
+  const rr=[["peak_order","image_x","image_y","rr_to_next_ms","cumulative_time_ms"]];
+  let cum=0;
+  S.rPeaks.forEach((p,i)=>{
+    const rrNext = i < d.vals.length ? d.vals[i] : "";
+    rr.push([i+1, round(p[0],4), round(p[1],4), rrNext, cum]);
+    if(i < d.vals.length) cum += d.vals[i];
+  });
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rr),"RR Intervals");
-  // Tab 3 — Analysis (settings + peak positions, so it can be re-loaded later)
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(technicalRows()),"Analysis");
+  // Tab 3 — Analysis (calibration / level settings only)
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(settingsRows()),"Analysis");
   const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
   downloadBlob(S.pdfName+".xlsx", new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
   setStatus("Exported Excel workbook (Results · RR Intervals · Analysis).", true);
@@ -754,8 +778,8 @@ function exportCSV(d){
   let s="Results\nFile,Subject,Date,Time,HR (bpm),Mean RR (ms),RMSSD (ms),SDNN (ms)\n";
   s+=`${S.pdfName}.pdf,${d.exam.subjectId},${d.exam.date},${d.exam.time},${fmt1(d.hr)},${Math.round(d.mean)},`+
      `${d.rmssd==null?"—":fmt1(d.rmssd)},${d.sdnn==null?"—":fmt1(d.sdnn)}\n\n`;
-  s+="RR Intervals\n#,RR Interval (ms),Cumulative (ms),Instant HR (bpm)\n";
-  let cum=0; d.vals.forEach((v,i)=>{ cum+=v; s+=`${i+1},${v},${cum},${fmt1(60000/v)}\n`; });
+  s+="RR Intervals\n#,RR Interval (ms),Cumulative (ms)\n";
+  let cum=0; d.vals.forEach((v,i)=>{ cum+=v; s+=`${i+1},${v},${cum}\n`; });
   downloadBlob(S.pdfName+".csv", new Blob([s],{type:"text/csv"}));
   setStatus("Exported CSV.", true);
 }
@@ -788,27 +812,42 @@ async function loadAnalysisFile(file){
       if(o.exam) S.examPrefill=o.exam;
     } else {
       const wb=XLSX.read(new Uint8Array(await file.arrayBuffer()),{type:"array"});
-      // new HRVey files store settings in the "Analysis" tab; legacy/desktop files use "Technical details"
-      const ws=wb.Sheets["Technical details"]||wb.Sheets["Analysis"];
-      if(!ws){ alertBox("Unsupported file","No 'Analysis' tab — only HRVey or desktop exports can be loaded."); return; }
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:true});
-      const p={}; let peaksAt=-1;
-      for(let i=0;i<rows.length;i++){ const r=rows[i]||[];
-        if(r[0]==="peak_order"){peaksAt=i+1;break;}
-        if(r[0]!=null&&r[0]!=="") p[String(r[0])]=r[1];
+      const legacy=wb.Sheets["Technical details"];   // desktop / old HRVey: settings + peaks together
+      if(legacy){
+        const {params,peaks}=parseKVAndPeaks(legacy);
+        loadFromParts(params, peaks);
+      } else {
+        const ana=wb.Sheets["Analysis"];             // new HRVey: settings only
+        if(!ana){ alertBox("Unsupported file","No 'Analysis' tab — only HRVey or desktop exports can be loaded."); return; }
+        const {params}=parseKVAndPeaks(ana);
+        const peaks=[]; const rrWs=wb.Sheets["RR Intervals"];   // peak positions live with the RR intervals now
+        if(rrWs){ const rows=XLSX.utils.sheet_to_json(rrWs,{header:1,blankrows:true});
+          for(let i=1;i<rows.length;i++){ const r=rows[i]||[]; if(r[0]==null||r[0]==="")continue;
+            const x=Number(r[1]),y=Number(r[2]); if(isFinite(x)&&isFinite(y))peaks.push([x,y]); } }
+        loadFromParts(params, peaks);
       }
-      const num=k=>p[k]==null||p[k]===""?null:Number(p[k]);
-      const lp=[]; if(num("level_pt1_x")!=null)lp.push([num("level_pt1_x"),num("level_pt1_y")]);
-      if(num("level_pt2_x")!=null)lp.push([num("level_pt2_x"),num("level_pt2_y")]);
-      const cp=[]; if(num("cal_pt1_x")!=null)cp.push([num("cal_pt1_x"),num("cal_pt1_y")]);
-      if(num("cal_pt2_x")!=null)cp.push([num("cal_pt2_x"),num("cal_pt2_y")]);
-      const peaks=[]; for(let i=peaksAt;peaksAt>=0&&i<rows.length;i++){ const r=rows[i]||[];
-        if(r[0]==null||r[0]==="")continue; const x=Number(r[1]),y=Number(r[2]);
-        if(isFinite(x)&&isFinite(y))peaks.push([x,y]); }
-      applyLoaded(num("image_rotation_applied_deg")||0, null, lp, num("px_per_ms"), cp, peaks);
     }
     setStatus(`Loaded analysis — ${S.rPeaks.length} peaks restored.`, true);
   }catch(err){ console.error(err); alertBox("Load error",String(err&&err.message||err)); }
+}
+function parseKVAndPeaks(ws){
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:true});
+  const params={}; let at=-1;
+  for(let i=0;i<rows.length;i++){ const r=rows[i]||[];
+    if(r[0]==="peak_order"){at=i+1;break;}
+    if(r[0]!=null&&r[0]!=="") params[String(r[0])]=r[1]; }
+  const peaks=[]; for(let i=at;at>=0&&i<rows.length;i++){ const r=rows[i]||[];
+    if(r[0]==null||r[0]==="")continue; const x=Number(r[1]),y=Number(r[2]);
+    if(isFinite(x)&&isFinite(y))peaks.push([x,y]); }
+  return {params,peaks};
+}
+function loadFromParts(p, peaks){
+  const num=k=>p[k]==null||p[k]===""?null:Number(p[k]);
+  const lp=[]; if(num("level_pt1_x")!=null)lp.push([num("level_pt1_x"),num("level_pt1_y")]);
+  if(num("level_pt2_x")!=null)lp.push([num("level_pt2_x"),num("level_pt2_y")]);
+  const cp=[]; if(num("cal_pt1_x")!=null)cp.push([num("cal_pt1_x"),num("cal_pt1_y")]);
+  if(num("cal_pt2_x")!=null)cp.push([num("cal_pt2_x"),num("cal_pt2_y")]);
+  applyLoaded(num("image_rotation_applied_deg")||0, null, lp, num("px_per_ms"), cp, peaks);
 }
 function applyLoaded(rotDeg, _ignored, levelPts, pxPerMs, calPts, peaks){
   S.appliedRotationDeg=rotDeg; rebuildWork();
