@@ -4,6 +4,14 @@ HRV analysis for scanned 10-second ECG PDFs. Runs entirely in your browser, noth
 
 Hosted version: https://danielzavada.cz/hrvey
 
+## Introduction
+
+HRVey was born out of frustration with traditional tools. A 10-second ECG is a valuable
+addition of data, but measuring it was cumbersome and, just as importantly, not repeatable:
+once an analysis was done there was no straightforward way to check it. HRVey makes the
+measurement quick and keeps the original scan together with your markings, so any analysis
+can be reopened and verified later.
+
 ## Use
 
 1. **Open** a 10-second ECG PDF
