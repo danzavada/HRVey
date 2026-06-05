@@ -2,43 +2,874 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="description" content="HRVey — an HRV analysis tool for 10-second ECG PDFs. Runs entirely in your browser.">
+  <meta name="theme-color" content="#0c1016">
   <title>HRVey — HRV analysis for 10s ECG PDFs</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
   <style>
-    :root { color-scheme: light dark; }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; min-height: 100vh; display: grid; place-items: center;
-      font: 16px/1.5 system-ui, "Segoe UI", Roboto, sans-serif;
-      background: #0f1115; color: #e8eaed;
+    :root{
+      --bg:#0c1016; --panel:#141a22; --panel2:#0f141b; --line:#222b36;
+      --ink:#e8eaed; --muted:#8b94a0; --accent:#39d98a; --accent-d:#2bb673;
+      --green:#2ecc71; --orange:#e67e22; --red:#ef5350; --blue:#6aa8ff;
+      --btn:#1b2330; --btn-h:#27313f; --btn-a:#39d98a;
     }
-    main { max-width: 36rem; padding: 2.5rem 1.5rem; text-align: center; }
-    h1 { font-size: 2.75rem; margin: 0 0 .25rem; letter-spacing: -.02em; }
-    .tag { color: #9aa0a6; margin: 0 0 1.75rem; }
-    .badge {
-      display: inline-block; padding: .35rem .8rem; border-radius: 999px;
-      background: #1b2330; color: #8ab4f8; font-size: .85rem; font-weight: 600;
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0}
+    body{
+      font:14px/1.45 system-ui,"Segoe UI",Roboto,sans-serif;
+      background:var(--bg); color:var(--ink); overflow:hidden;
+      -webkit-user-select:none; user-select:none;
     }
-    ol { text-align: left; display: inline-block; margin: 1.75rem auto 0; color: #c9ccd1; }
-    ol li { margin: .35rem 0; }
-    .note { margin-top: 2rem; font-size: .85rem; color: #6f767e; }
+    #app{display:flex; flex-direction:column; height:100vh}
+
+    /* ── Toolbar ── */
+    .toolbar{
+      display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+      padding:8px 10px; background:var(--panel); border-bottom:1px solid var(--line);
+    }
+    .brand{display:flex;align-items:center;gap:8px;font-weight:700;margin-right:4px;letter-spacing:-.02em}
+    .brand img{width:22px;height:22px;border-radius:5px}
+    .brand small{font-weight:500;color:var(--muted);font-size:11px}
+    .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 4px}
+    .spacer{flex:1}
+    button.btn{
+      font:inherit; color:var(--ink); background:var(--btn);
+      border:1px solid var(--line); border-radius:8px; padding:7px 12px;
+      cursor:pointer; white-space:nowrap; transition:background .12s,border-color .12s;
+    }
+    button.btn:hover{background:var(--btn-h)}
+    button.btn:active{transform:translateY(1px)}
+    button.btn:disabled{opacity:.4;cursor:not-allowed}
+    button.btn.primary{background:var(--accent-d);border-color:var(--accent-d);color:#04130b;font-weight:600}
+    button.btn.primary:hover{background:var(--accent)}
+    .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+    .seg button{
+      font:inherit;color:var(--muted);background:transparent;border:0;
+      padding:7px 12px;cursor:pointer;border-right:1px solid var(--line);
+    }
+    .seg button:last-child{border-right:0}
+    .seg button:hover{background:var(--btn)}
+    .seg button.on{background:var(--accent-d);color:#04130b;font-weight:600}
+    .seg button kbd{font:inherit;opacity:.6;margin-left:5px}
+
+    /* ── Workspace ── */
+    .workspace{flex:1;display:flex;min-height:0}
+    .canvas-wrap{flex:1;position:relative;min-width:0;background:
+      repeating-conic-gradient(#0a0e13 0% 25%, #0c1016 0% 50%) 50%/24px 24px}
+    #ecg{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
+    .canvas-wrap.empty::after{
+      content:"Open a 10-second ECG PDF to begin  ·  drag & drop, or press Ctrl+O";
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      color:var(--muted);font-size:15px;pointer-events:none;padding:24px;text-align:center;
+    }
+    .canvas-wrap.drag{outline:2px dashed var(--accent);outline-offset:-10px}
+    .zoombadge{
+      position:absolute;left:10px;bottom:10px;background:#0009;border:1px solid var(--line);
+      border-radius:6px;padding:3px 8px;font-size:12px;color:var(--muted);pointer-events:none
+    }
+
+    /* ── Side panel ── */
+    .panel{
+      width:248px;flex:none;background:var(--panel);border-left:1px solid var(--line);
+      display:flex;flex-direction:column;min-height:0
+    }
+    .panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+      margin:0;padding:12px 14px 8px;font-weight:600}
+    .rrlist{flex:1;overflow:auto;margin:0;padding:0 6px;list-style:none;min-height:60px}
+    .rrlist li{font-variant-numeric:tabular-nums;padding:4px 8px;border-radius:6px;font-size:13px;
+      display:flex;justify-content:space-between;color:#cdd3db}
+    .rrlist li:nth-child(odd){background:#0f141b}
+    .rrlist li .i{color:var(--muted)}
+    .rrlist .empty{color:var(--muted);padding:8px;font-style:italic}
+    .stats{border-top:1px solid var(--line);padding:10px 14px;display:grid;grid-template-columns:auto 1fr;
+      gap:6px 10px;font-variant-numeric:tabular-nums}
+    .stats .k{color:var(--muted)}
+    .stats .v{text-align:right;font-weight:600}
+    .stats .v.big{color:var(--accent);font-size:15px}
+    .meta{border-top:1px solid var(--line);padding:8px 14px;font-size:12px;color:var(--muted);
+      display:grid;grid-template-columns:auto 1fr;gap:4px 8px}
+    .meta .v{text-align:right;color:#cdd3db}
+
+    /* ── Status bar ── */
+    .statusbar{display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--panel2);
+      border-top:1px solid var(--line);font-size:12.5px;color:var(--muted);min-height:30px}
+    .statusbar .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+    .statusbar.ok .dot{background:var(--accent)}
+
+    /* ── Modal ── */
+    .backdrop{position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:50}
+    .modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+      padding:18px 18px 16px;min-width:300px;max-width:92vw;box-shadow:0 18px 60px #000a}
+    .modal h3{margin:0 0 4px;font-size:16px}
+    .modal p.sub{margin:0 0 14px;color:var(--muted);font-size:13px}
+    .modal label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+    .modal input{width:100%;font:inherit;color:var(--ink);background:var(--panel2);
+      border:1px solid var(--line);border-radius:8px;padding:9px 10px;-webkit-user-select:text;user-select:text}
+    .modal input:focus{outline:none;border-color:var(--accent)}
+    .modal .row{display:flex;gap:10px}
+    .modal .row>div{flex:1}
+    .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+    .menu{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+      padding:6px;z-index:60;box-shadow:0 14px 40px #000a;min-width:180px}
+    .menu button{display:block;width:100%;text-align:left;background:transparent;border:0;color:var(--ink);
+      font:inherit;padding:8px 10px;border-radius:7px;cursor:pointer}
+    .menu button:hover{background:var(--btn)}
+    .menu .hint{color:var(--muted);font-size:11px;padding:4px 10px 6px}
+    .err{color:#ff8a80;font-size:12px;margin-top:8px;min-height:14px}
   </style>
 </head>
 <body>
-  <main>
-    <h1>HRVey</h1>
-    <p class="tag">An HRV analysis tool for 10-second ECG PDFs.</p>
-    <span class="badge">🚧 In development</span>
-    <ol>
-      <li>Load a scanned 10-second ECG PDF</li>
-      <li>Level the scan and calibrate the time scale</li>
-      <li>Mark each R-peak</li>
-      <li>Read RR intervals, heart rate, RMSSD &amp; SDNN — and export</li>
-    </ol>
-    <p class="note">
-      Runs entirely in your browser. Your ECG files never leave your device.
-    </p>
-  </main>
+<div id="app">
+  <header class="toolbar">
+    <span class="brand"><img src="icons/icon-192.png" alt=""><span>HRVey</span><small>10s ECG · HRV</small></span>
+    <button class="btn" id="btnOpen" title="Open PDF (Ctrl+O)">Open PDF</button>
+    <button class="btn" id="btnRotate" title="Rotate 90°" disabled>Rotate 90°</button>
+    <span class="sep"></span>
+    <span class="seg" id="modes">
+      <button data-mode="view" class="on">Select<kbd>S</kbd></button>
+      <button data-mode="level">Level<kbd>L</kbd></button>
+      <button data-mode="calibrate">Calibrate<kbd>C</kbd></button>
+      <button data-mode="mark">Mark<kbd>M</kbd></button>
+    </span>
+    <span class="sep"></span>
+    <button class="btn" id="btnFit" title="Fit to window (Z toggles)" disabled>Fit</button>
+    <button class="btn" id="btnClearCal" disabled>Clear Cal</button>
+    <button class="btn" id="btnClearPeaks" disabled>Clear Peaks</button>
+    <button class="btn" id="btnReset" disabled>Reset</button>
+    <span class="spacer"></span>
+    <button class="btn" id="btnLoad" title="Load a saved analysis">Load</button>
+    <button class="btn primary" id="btnExport" disabled>Export ▾</button>
+  </header>
+
+  <div class="workspace">
+    <div class="canvas-wrap empty" id="wrap">
+      <canvas id="ecg"></canvas>
+      <div class="zoombadge" id="zoomBadge" style="display:none">100%</div>
+    </div>
+    <aside class="panel">
+      <h2>RR intervals</h2>
+      <ul class="rrlist" id="rrlist"><li class="empty">No peaks marked</li></ul>
+      <div class="stats">
+        <span class="k">Heart rate</span><span class="v big" id="sHR">—</span>
+        <span class="k">Mean RR</span><span class="v" id="sMean">—</span>
+        <span class="k">RMSSD</span><span class="v" id="sRMSSD">—</span>
+        <span class="k">SDNN</span><span class="v" id="sSDNN">—</span>
+      </div>
+      <div class="meta">
+        <span class="k">Calibration</span><span class="v" id="mCal">not set</span>
+        <span class="k">Level</span><span class="v" id="mLevel">0.00°</span>
+        <span class="k">R-peaks</span><span class="v" id="mPeaks">0</span>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="statusbar" id="statusbar">
+    <span class="dot"></span>
+    <span id="status">Open a PDF to begin — then Level → Calibrate → Mark Peaks → Export.</span>
+  </footer>
+</div>
+
+<input id="fileInput" type="file" hidden>
+
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script>
+"use strict";
+(function(){
+/* ───────────────────────── Constants ───────────────────────── */
+const MIN_ZOOM = 0.05, MAX_ZOOM = 20, RENDER_SCALE = 2.0;
+const SELECT_PX = 20;      // image-space px to select a peak
+const RIGHTCLICK_PX = 30;  // canvas px to delete on right-click
+const COL = {green:"#2ecc71", orange:"#e67e22", red:"#ef5350", black:"#0a0a0a"};
+
+// PDF.js worker: real worker over http(s); fall back to main-thread on file://
+if (location.protocol !== "file:") {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "vendor/pdf.worker.min.js";
+}
+
+/* ───────────────────────── State ───────────────────────── */
+const S = {
+  base:null, baseW:0, baseH:0,        // immutable rasterized page (canvas)
+  work:null,                          // {canvas,w,h,fwd,inv} = base rotated by appliedRotationDeg
+  appliedRotationDeg:0,
+  zoom:1, panX:0, panY:0, fitZoom:MIN_ZOOM,
+  mode:"view",
+  levelPts:[], levelAngle:0,          // levelAngle stays 0 (rotation baked into image)
+  calPts:[], pxPerMs:null,
+  rPeaks:[], peakHistory:[], selectedPeak:null,
+  pdfName:"ecg", examPrefill:null,
+  undo:[], redo:[],
+};
+
+/* ───────────────────────── DOM ───────────────────────── */
+const $ = s => document.querySelector(s);
+const canvas = $("#ecg"), ctx = canvas.getContext("2d");
+let D = ctx;                          // current overlay draw target (swapped for PNG export)
+const wrap = $("#wrap"), zoomBadge = $("#zoomBadge");
+let cssW = 0, cssH = 0, dpr = 1;
+
+/* ───────────────────────── Geometry / rotation ───────────────────────── */
+function rotInfo(W, H, deg){
+  const r = deg*Math.PI/180, cos = Math.cos(r), sin = Math.sin(r);
+  const newW = Math.abs(W*cos)+Math.abs(H*sin);
+  const newH = Math.abs(W*sin)+Math.abs(H*cos);
+  const cox=W/2, coy=H/2, cnx=newW/2, cny=newH/2;
+  // fwd: base -> rotated  (matrix R=[[cos,sin],[-sin,cos]], y-down → matches PIL visual-CCW)
+  const fwd=(x,y)=>{const dx=x-cox, dy=y-coy; return [cos*dx+sin*dy+cnx, -sin*dx+cos*dy+cny];};
+  // inv: rotated -> base
+  const inv=(x,y)=>{const ex=x-cnx, ey=y-cny; return [cos*ex - sin*ey + cox, sin*ex + cos*ey + coy];};
+  return {cos,sin,newW,newH,cox,coy,cnx,cny,fwd,inv};
+}
+function makeWork(base, deg){
+  const R = rotInfo(base.width, base.height, deg);
+  const cw = Math.max(1,Math.round(R.newW)), ch = Math.max(1,Math.round(R.newH));
+  const c = document.createElement("canvas"); c.width=cw; c.height=ch;
+  const g = c.getContext("2d");
+  g.fillStyle="#ffffff"; g.fillRect(0,0,cw,ch);      // white fill like PIL expand
+  const ex = R.cnx-(R.cos*R.cox+R.sin*R.coy);
+  const ey = R.cny-(-R.sin*R.cox+R.cos*R.coy);
+  g.setTransform(R.cos,-R.sin,R.sin,R.cos,ex,ey);
+  g.drawImage(base,0,0);
+  g.setTransform(1,0,0,1,0,0);
+  return {canvas:c, w:cw, h:ch, fwd:R.fwd, inv:R.inv};
+}
+function rebuildWork(){ S.work = makeWork(S.base, S.appliedRotationDeg); }
+
+// level-corrected horizontal distance (levelAngle is 0 in practice → |dx|)
+function xDist(p1, p2){
+  const dx = p2[0]-p1[0], dy = p2[1]-p1[1];
+  return Math.abs(dx*Math.cos(S.levelAngle) + dy*Math.sin(S.levelAngle));
+}
+function peakKey(p){ return p[0]*Math.cos(S.levelAngle) + p[1]*Math.sin(S.levelAngle); }
+
+function calcRR(){
+  if (S.pxPerMs == null || S.rPeaks.length < 2) return [];
+  const out = [];
+  for (let i=0;i<S.rPeaks.length-1;i++){
+    const p1=S.rPeaks[i], p2=S.rPeaks[i+1];
+    out.push({ms: Math.round(xDist(p1,p2)/S.pxPerMs), p1, p2});
+  }
+  return out;
+}
+function calcHRV(vals){
+  const n = vals.length;
+  if (n < 2) return {rmssd:null, sdnn:null};
+  const mean = vals.reduce((a,b)=>a+b,0)/n;
+  const sdnn = Math.sqrt(vals.reduce((a,v)=>a+(v-mean)*(v-mean),0)/n);
+  let s=0; for (let i=0;i<n-1;i++){const d=vals[i+1]-vals[i]; s+=d*d;}
+  const rmssd = Math.sqrt(s/(n-1));
+  return {rmssd, sdnn};
+}
+
+/* ───────────────────────── View transform ───────────────────────── */
+function i2c(ix, iy){ return [ix*S.zoom + S.panX, iy*S.zoom + S.panY]; }     // image → css px
+function c2i(cx, cy){ return [(cx-S.panX)/S.zoom, (cy-S.panY)/S.zoom]; }     // css px → image
+function evPos(e){
+  const r = canvas.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+}
+function clampZoom(z){ return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z)); }
+function clampPan(){
+  if (!S.work) return;
+  const w = S.work.w*S.zoom, h = S.work.h*S.zoom, M = 60;
+  S.panX = Math.min(cssW-M, Math.max(M-w, S.panX));
+  S.panY = Math.min(cssH-M, Math.max(M-h, S.panY));
+}
+function fitView(){
+  if (!S.work) return;
+  const z = clampZoom(Math.min(cssW/S.work.w, cssH/S.work.h)*0.97);
+  S.fitZoom = z; S.zoom = z;
+  S.panX = (cssW - S.work.w*z)/2;
+  S.panY = (cssH - S.work.h*z)/2;
+  redraw();
+}
+function zoomAt(cx, cy, z){
+  const nz = clampZoom(z);
+  const [ix, iy] = c2i(cx, cy);
+  S.zoom = nz; S.panX = cx - ix*nz; S.panY = cy - iy*nz;
+  clampPan(); redraw();
+}
+
+/* ───────────────────────── Rendering ───────────────────────── */
+function resize(){
+  dpr = window.devicePixelRatio || 1;
+  const r = wrap.getBoundingClientRect();
+  cssW = r.width; cssH = r.height;
+  canvas.width = Math.max(1,Math.round(cssW*dpr));
+  canvas.height = Math.max(1,Math.round(cssH*dpr));
+  redraw();
+}
+function redraw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+  if (!S.work){ zoomBadge.style.display="none"; return; }
+  // image
+  ctx.imageSmoothingEnabled = S.zoom < 1.5;
+  ctx.setTransform(dpr*S.zoom,0,0,dpr*S.zoom, dpr*S.panX, dpr*S.panY);
+  ctx.drawImage(S.work.canvas,0,0);
+  // overlays (css-px space)
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  drawLevel(); drawCal(); drawPeaks();
+  zoomBadge.style.display="block";
+  zoomBadge.textContent = Math.round(S.zoom*100) + "%";
+}
+function dot(cx,cy,color,r){
+  D.beginPath(); D.arc(cx,cy,r,0,7); D.fillStyle=color; D.fill();
+  D.lineWidth=1; D.strokeStyle="#fff"; D.stroke();
+}
+function label(cx,cy,text,color,size){
+  D.font = "bold "+(size||12)+"px Calibri, system-ui, sans-serif";
+  D.textAlign="center"; D.textBaseline="alphabetic";
+  D.lineWidth=3; D.strokeStyle="rgba(255,255,255,.85)"; D.strokeText(text,cx,cy);
+  D.fillStyle=color; D.fillText(text,cx,cy);
+}
+function drawLevel(){
+  const pts=S.levelPts; if(!pts.length) return;
+  D.setLineDash([]);
+  for(const p of pts){ const [x,y]=i2c(p[0],p[1]); dot(x,y,COL.green,5); }
+  if(pts.length===2){
+    const [x1,y1]=i2c(pts[0][0],pts[0][1]), [x2,y2]=i2c(pts[1][0],pts[1][1]);
+    D.strokeStyle=COL.green; D.lineWidth=3;
+    D.beginPath(); D.moveTo(x1,y1); D.lineTo(x2,y2); D.stroke();
+    D.lineWidth=2; D.setLineDash([8,5]); D.beginPath();
+    if(x2!==x1){ const m=(y2-y1)/(x2-x1);
+      D.moveTo(0, y1+m*(0-x1)); D.lineTo(cssW, y1+m*(cssW-x1));
+    } else { D.moveTo(x1,0); D.lineTo(x1,cssH); }
+    D.stroke(); D.setLineDash([]);
+  }
+}
+function drawCal(){
+  const pts=S.calPts; if(!pts.length) return;
+  D.setLineDash([]); D.lineWidth=2; D.strokeStyle=COL.orange;
+  const scr = pts.map(p=>i2c(p[0],p[1]));
+  for(const [x,y] of scr){
+    D.beginPath(); D.moveTo(x,y-8); D.lineTo(x,y+8); D.stroke();
+    dot(x,y,COL.orange,5);
+  }
+  if(pts.length===2){
+    const [a,b]=scr;
+    drawArrow(a[0],a[1],b[0],b[1],COL.orange,2);
+    if(S.pxPerMs){
+      const ms = xDist(pts[0],pts[1])/S.pxPerMs;
+      label((a[0]+b[0])/2,(a[1]+b[1])/2-16, ms.toFixed(0)+" ms", COL.orange,13);
+    }
+  }
+}
+function drawPeaks(){
+  D.setLineDash([]);
+  S.rPeaks.forEach((p,i)=>{
+    const [x,y]=i2c(p[0],p[1]);
+    D.strokeStyle=COL.red; D.lineWidth=2;
+    D.beginPath(); D.moveTo(x,y-8); D.lineTo(x,y+8); D.stroke();
+    dot(x,y,COL.red,5);
+    label(x,y-16,String(i+1),COL.red,12);
+    if(i===S.selectedPeak){
+      D.beginPath(); D.arc(x,y,10,0,7); D.strokeStyle="#000"; D.lineWidth=2; D.stroke();
+      D.beginPath(); D.arc(x,y,10,0,7); D.strokeStyle="#fff"; D.lineWidth=1; D.stroke();
+    }
+  });
+  for(const rr of calcRR()){
+    const [x1,y1]=i2c(rr.p1[0],rr.p1[1]), [x2,y2]=i2c(rr.p2[0],rr.p2[1]);
+    const yTop=Math.min(y1,y2)-34;
+    D.setLineDash([7,4]);
+    drawArrow(x1,yTop,x2,yTop,COL.black,2);
+    D.setLineDash([]);
+    label((x1+x2)/2,yTop-6, rr.ms+" ms", COL.black,13);
+  }
+}
+function drawArrow(x1,y1,x2,y2,color,w){
+  D.strokeStyle=color; D.lineWidth=w;
+  D.beginPath(); D.moveTo(x1,y1); D.lineTo(x2,y2); D.stroke();
+  const ah=6, ang=Math.atan2(y2-y1,x2-x1);
+  for(const [ex,ey,a] of [[x1,y1,ang+Math.PI],[x2,y2,ang]]){
+    D.beginPath(); D.moveTo(ex,ey);
+    D.lineTo(ex-ah*Math.cos(a-0.5), ey-ah*Math.sin(a-0.5));
+    D.moveTo(ex,ey);
+    D.lineTo(ex-ah*Math.cos(a+0.5), ey-ah*Math.sin(a+0.5));
+    D.stroke();
+  }
+}
+
+/* ───────────────────────── Panel / status ───────────────────────── */
+function setStatus(msg, ok){
+  $("#status").textContent = msg;
+  $("#statusbar").classList.toggle("ok", !!ok);
+}
+function fmt1(x){ return (Math.round(x*10)/10).toFixed(1); }
+function updatePanel(){
+  const rrs = calcRR(), list = $("#rrlist");
+  list.innerHTML = "";
+  if(!rrs.length){
+    const li=document.createElement("li"); li.className="empty";
+    li.textContent = S.rPeaks.length ? (S.pxPerMs?"Mark ≥2 peaks":"Calibrate to see intervals") : "No peaks marked";
+    list.appendChild(li);
+  } else {
+    rrs.forEach((rr,i)=>{
+      const li=document.createElement("li");
+      li.innerHTML = `<span class="i">RR${String(i+1).padStart(2,"0")}</span><span>${rr.ms} ms</span>`;
+      list.appendChild(li);
+    });
+  }
+  if(rrs.length){
+    const vals=rrs.map(r=>r.ms), mean=vals.reduce((a,b)=>a+b,0)/vals.length;
+    const hr=60000/mean, {rmssd,sdnn}=calcHRV(vals);
+    $("#sHR").textContent = fmt1(hr)+" bpm";
+    $("#sMean").textContent = Math.round(mean)+" ms";
+    $("#sRMSSD").textContent = rmssd==null?"—":fmt1(rmssd)+" ms";
+    $("#sSDNN").textContent = sdnn==null?"—":fmt1(sdnn)+" ms";
+  } else {
+    $("#sHR").textContent=$("#sMean").textContent=$("#sRMSSD").textContent=$("#sSDNN").textContent="—";
+  }
+  $("#mCal").textContent = S.pxPerMs ? S.pxPerMs.toFixed(3)+" px/ms" : "not set";
+  $("#mCal").style.color = S.pxPerMs ? COL.orange : "";
+  const lvl = S.appliedRotationDeg!==0 ? (signed(S.appliedRotationDeg)+"° (leveled)") : "0.00°";
+  $("#mLevel").textContent = lvl;
+  $("#mLevel").style.color = S.appliedRotationDeg!==0 ? COL.green : "";
+  $("#mPeaks").textContent = String(S.rPeaks.length);
+  // toolbar enable state
+  const has = !!S.work;
+  for(const id of ["#btnRotate","#btnFit","#btnReset"]) $(id).disabled=!has;
+  $("#btnExport").disabled = calcRR().length===0;
+  $("#btnClearCal").disabled = !S.calPts.length && S.pxPerMs==null;
+  $("#btnClearPeaks").disabled = !S.rPeaks.length;
+}
+function signed(x){ return (x>=0?"+":"")+x.toFixed(2); }
+
+/* ───────────────────────── Undo / redo ───────────────────────── */
+function snapshot(){
+  return JSON.stringify({
+    appliedRotationDeg:S.appliedRotationDeg, levelPts:S.levelPts, levelAngle:S.levelAngle,
+    calPts:S.calPts, pxPerMs:S.pxPerMs, rPeaks:S.rPeaks, peakHistory:S.peakHistory,
+    selectedPeak:S.selectedPeak,
+  });
+}
+function restore(str){
+  const o = JSON.parse(str);
+  Object.assign(S, {
+    appliedRotationDeg:o.appliedRotationDeg, levelPts:o.levelPts, levelAngle:o.levelAngle,
+    calPts:o.calPts, pxPerMs:o.pxPerMs, rPeaks:o.rPeaks, peakHistory:o.peakHistory,
+    selectedPeak:o.selectedPeak,
+  });
+  rebuildWork(); redraw(); updatePanel();
+}
+function pushUndo(){ S.undo.push(snapshot()); if(S.undo.length>120) S.undo.shift(); S.redo.length=0; }
+function undo(){ if(!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); setStatus("Undone."); }
+function redo(){ if(!S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); setStatus("Redone."); }
+
+/* ───────────────────────── Modes ───────────────────────── */
+function setMode(m){
+  S.mode=m;
+  document.querySelectorAll("#modes button").forEach(b=>b.classList.toggle("on",b.dataset.mode===m));
+  const hint={view:"Select: click a peak to select; use the wheel to zoom/pan.",
+    level:"Level: click two points on a horizontal feature (a grid line or baseline).",
+    calibrate:"Calibrate: click two points a known time apart (e.g. one large square = 200 ms).",
+    mark:"Mark Peaks: click each R-peak. Right-click or Delete removes one."}[m];
+  setStatus(hint);
+}
+function nearestPeak(ix,iy,thr){
+  let bi=-1, bd=Infinity;
+  S.rPeaks.forEach((p,i)=>{ const d=Math.hypot(p[0]-ix,p[1]-iy); if(d<bd){bd=d;bi=i;} });
+  return bd<=thr ? bi : -1;
+}
+
+/* ───────────────────────── Mouse ───────────────────────── */
+let panning=null;
+canvas.addEventListener("mousedown",e=>{
+  if(e.button===1 || (e.button===0 && S.mode==="view" && e.shiftKey)){
+    panning={x:e.clientX,y:e.clientY}; e.preventDefault();
+  }
+});
+window.addEventListener("mousemove",e=>{
+  if(panning){ S.panX+=e.clientX-panning.x; S.panY+=e.clientY-panning.y;
+    panning={x:e.clientX,y:e.clientY}; clampPan(); redraw(); }
+});
+window.addEventListener("mouseup",()=>{ panning=null; });
+
+canvas.addEventListener("click",e=>{
+  if(!S.work || panning) return;
+  const [cx,cy]=evPos(e), [ix,iy]=c2i(cx,cy), m=S.mode;
+  // near-peak select in any non-mark mode
+  if(S.rPeaks.length && m!=="mark"){
+    const n=nearestPeak(ix,iy,SELECT_PX);
+    if(n>=0){ S.selectedPeak = S.selectedPeak===n?null:n; redraw();
+      setStatus(S.selectedPeak!=null?`Peak ${n+1} selected — press Delete to remove.`:"Select a peak."); return; }
+  }
+  if(m==="level") clickLevel(ix,iy);
+  else if(m==="calibrate") clickCal(ix,iy);
+  else if(m==="mark") clickMark(ix,iy);
+});
+canvas.addEventListener("contextmenu",e=>{
+  e.preventDefault();
+  if(!S.work || S.mode!=="mark" || !S.rPeaks.length) return;
+  const [cx,cy]=evPos(e), [ix,iy]=c2i(cx,cy);
+  let bi=-1,bd=Infinity;
+  S.rPeaks.forEach((p,i)=>{ const d=Math.hypot((p[0]-ix)*S.zoom,(p[1]-iy)*S.zoom); if(d<bd){bd=d;bi=i;} });
+  if(bi>=0 && bd<=RIGHTCLICK_PX){ pushUndo();
+    const rem=S.rPeaks[bi];
+    S.rPeaks.splice(bi,1);
+    const h=S.peakHistory.findIndex(p=>p[0]===rem[0]&&p[1]===rem[1]); if(h>=0)S.peakHistory.splice(h,1);
+    S.selectedPeak=null; redraw(); updatePanel(); setStatus(`Peak removed — ${S.rPeaks.length} left.`);
+  }
+});
+canvas.addEventListener("dblclick",e=>{
+  if(!S.work || !S.calPts.length) return;
+  const [cx,cy]=evPos(e), [ix,iy]=c2i(cx,cy);
+  let near=false;
+  for(const p of S.calPts){ if(Math.hypot((p[0]-ix)*S.zoom,(p[1]-iy)*S.zoom)<=RIGHTCLICK_PX){near=true;break;} }
+  if(near && S.calPts.length===2) editCal();
+});
+canvas.addEventListener("wheel",e=>{
+  if(!S.work) return; e.preventDefault();
+  if(e.ctrlKey){ const [cx,cy]=evPos(e); zoomAt(cx,cy, S.zoom*(e.deltaY<0?1.12:1/1.12)); }
+  else if(e.shiftKey){ S.panX-=e.deltaY; clampPan(); redraw(); }
+  else { S.panY-=e.deltaY; clampPan(); redraw(); }
+},{passive:false});
+
+function clickLevel(ix,iy){
+  if(S.levelPts.length>=2) S.levelPts=[];
+  S.levelPts.push([ix,iy]);
+  if(S.levelPts.length<2){ redraw(); setStatus("Level: click a second point on the same horizontal feature."); return; }
+  pushUndo();
+  const oldWork=S.work;
+  const [b0x,b0y]=oldWork.inv(S.levelPts[0][0],S.levelPts[0][1]);
+  const [b1x,b1y]=oldWork.inv(S.levelPts[1][0],S.levelPts[1][1]);
+  const newDeg=Math.atan2(b1y-b0y,b1x-b0x)*180/Math.PI;
+  const newWork=makeWork(S.base,newDeg);
+  const tx=p=>{ const [bx,by]=oldWork.inv(p[0],p[1]); return newWork.fwd(bx,by); };
+  S.calPts=S.calPts.map(tx); S.rPeaks=S.rPeaks.map(tx); S.peakHistory=S.peakHistory.map(tx);
+  S.levelPts=[newWork.fwd(b0x,b0y), newWork.fwd(b1x,b1y)];
+  S.appliedRotationDeg=newDeg; S.work=newWork; S.levelAngle=0;
+  S.rPeaks.sort((a,b)=>peakKey(a)-peakKey(b));
+  fitView(); updatePanel();
+  setStatus(`Image leveled (${signed(newDeg)}°). Now switch to Calibrate.`, true);
+}
+function clickCal(ix,iy){
+  if(S.calPts.length>=2) S.calPts=[];
+  S.calPts.push([ix,iy]);
+  if(S.calPts.length<2){ redraw(); setStatus("Calibrate: click a second point."); return; }
+  redraw();
+  promptNumber("Calibrate distance","Time between the two points (ms) — e.g. 200 for one large square at 25 mm/s:",200)
+    .then(ms=>{
+      if(!ms){ S.calPts=[]; redraw(); return; }
+      const px=xDist(S.calPts[0],S.calPts[1]);
+      if(px<1){ S.calPts=[]; redraw(); alertBox("Calibration error","Those two points are too close together. Pick two well-separated points."); return; }
+      pushUndo(); S.pxPerMs=px/ms; redraw(); updatePanel();
+      setStatus(`Calibrated: ${S.pxPerMs.toFixed(3)} px/ms — now switch to Mark Peaks.`, true);
+    });
+}
+function editCal(){
+  promptNumber("Edit calibration","Time between the calibration points (ms):",
+      Math.round(xDist(S.calPts[0],S.calPts[1])/(S.pxPerMs||1)))
+    .then(ms=>{ if(!ms) return; const px=xDist(S.calPts[0],S.calPts[1]); if(px<1) return;
+      pushUndo(); S.pxPerMs=px/ms; redraw(); updatePanel(); setStatus(`Re-calibrated: ${S.pxPerMs.toFixed(3)} px/ms.`,true); });
+}
+function clickMark(ix,iy){
+  const n=nearestPeak(ix,iy,SELECT_PX);
+  if(n>=0){ S.selectedPeak=S.selectedPeak===n?null:n; redraw();
+    setStatus(S.selectedPeak!=null?`Peak ${n+1} selected — press Delete to remove.`:"Mark: click an R-peak."); return; }
+  pushUndo();
+  S.selectedPeak=null;
+  S.rPeaks.push([ix,iy]); S.peakHistory.push([ix,iy]);
+  S.rPeaks.sort((a,b)=>peakKey(a)-peakKey(b));
+  redraw(); updatePanel();
+  const tot=S.rPeaks.length;
+  setStatus(S.pxPerMs?`Peak placed — ${tot} peaks total.`:`Peak placed (${tot}). Calibrate to see intervals.`);
+}
+function deleteSelected(){
+  if(S.selectedPeak==null) return;
+  pushUndo();
+  const rem=S.rPeaks[S.selectedPeak]; S.rPeaks.splice(S.selectedPeak,1);
+  const h=S.peakHistory.findIndex(p=>p[0]===rem[0]&&p[1]===rem[1]); if(h>=0)S.peakHistory.splice(h,1);
+  S.selectedPeak=null; redraw(); updatePanel(); setStatus(`Peak deleted — ${S.rPeaks.length} left.`);
+}
+
+/* ───────────────────────── File: open / rotate / reset ───────────────────────── */
+let pendingLoadKind="pdf";
+$("#btnOpen").onclick=()=>{ pendingLoadKind="pdf"; const fi=$("#fileInput"); fi.accept=".pdf,application/pdf"; fi.click(); };
+$("#btnLoad").onclick=()=>{ pendingLoadKind="analysis"; const fi=$("#fileInput"); fi.accept=".json,.xlsx"; fi.click(); };
+$("#fileInput").onchange=e=>{ const f=e.target.files[0]; if(!f) return; e.target.value="";
+  if(pendingLoadKind==="pdf") openPdfFile(f); else loadAnalysisFile(f); };
+
+wrap.addEventListener("dragover",e=>{e.preventDefault();wrap.classList.add("drag");});
+wrap.addEventListener("dragleave",()=>wrap.classList.remove("drag"));
+wrap.addEventListener("drop",e=>{ e.preventDefault(); wrap.classList.remove("drag");
+  const f=e.dataTransfer.files[0]; if(!f) return;
+  if(/\.pdf$/i.test(f.name)) openPdfFile(f);
+  else if(/\.(json|xlsx)$/i.test(f.name)) loadAnalysisFile(f);
+});
+
+async function openPdfFile(file){
+  setStatus("Rendering PDF…");
+  try{
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
+    const page=await pdf.getPage(1);
+    const vp=page.getViewport({scale:RENDER_SCALE});
+    const c=document.createElement("canvas"); c.width=Math.round(vp.width); c.height=Math.round(vp.height);
+    await page.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;
+    S.base=c; S.baseW=c.width; S.baseH=c.height;
+    S.appliedRotationDeg=0; rebuildWork();
+    clearAllSilent(); S.undo.length=0; S.redo.length=0;
+    S.pdfName=file.name.replace(/\.pdf$/i,"");
+    S.examPrefill=parseFilename(S.pdfName);
+    wrap.classList.remove("empty");
+    fitView(); updatePanel(); setMode("view");
+    setStatus(`Loaded "${file.name}" (${c.width}×${c.height}px). Set Level → Calibrate → Mark Peaks.`, true);
+  }catch(err){ console.error(err); alertBox("Could not open PDF", String(err&&err.message||err)); setStatus("Failed to open PDF."); }
+}
+$("#btnRotate").onclick=()=>{
+  if(!S.base) return;
+  const r=makeWork(S.base,90);              // rotate base 90° → new base
+  S.base=r.canvas; S.baseW=r.canvas.width; S.baseH=r.canvas.height;
+  S.appliedRotationDeg=0; rebuildWork();
+  clearAllSilent(); S.undo.length=0; S.redo.length=0;
+  fitView(); updatePanel(); setStatus("Rotated 90°. Level / Calibrate / Peaks cleared.");
+};
+$("#btnReset").onclick=()=>{
+  if(!S.base) return;
+  S.appliedRotationDeg=0;            // note: base keeps any 90° rotations, like the desktop reload
+  rebuildWork(); clearAllSilent(); S.undo.length=0; S.redo.length=0;
+  fitView(); updatePanel(); setStatus("Reset — all measurements cleared.");
+};
+$("#btnClearCal").onclick=()=>{ pushUndo(); S.calPts=[]; S.pxPerMs=null; redraw(); updatePanel(); setStatus("Calibration cleared. Ctrl+Z to undo."); };
+$("#btnClearPeaks").onclick=()=>{ pushUndo(); S.rPeaks=[]; S.peakHistory=[]; S.selectedPeak=null; redraw(); updatePanel(); setStatus("Peaks cleared. Ctrl+Z to undo."); };
+$("#btnFit").onclick=()=>fitView();
+function clearAllSilent(){
+  S.levelPts=[]; S.levelAngle=0; S.calPts=[]; S.pxPerMs=null;
+  S.rPeaks=[]; S.peakHistory=[]; S.selectedPeak=null;
+}
+function parseFilename(name){
+  const m=name.match(/^(.+?)_(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{2})$/);
+  if(!m) return null;
+  const idm=m[1].match(/^(ID[^_]+)/i);
+  return {subjectId: idm?idm[1]:m[1], date:`${m[4]}/${m[3]}/${m[2]}`, time:`${m[5]}:${m[6]}`};
+}
+
+/* ───────────────────────── Export ───────────────────────── */
+$("#btnExport").onclick=e=>openExportMenu(e.currentTarget);
+function openExportMenu(anchor){
+  const r=anchor.getBoundingClientRect();
+  const menu=document.createElement("div"); menu.className="menu";
+  menu.style.right=(window.innerWidth-r.right)+"px"; menu.style.top=(r.bottom+6)+"px";
+  menu.innerHTML=`<div class="hint">Export current analysis</div>
+    <button data-x="xlsx">Excel workbook (.xlsx)</button>
+    <button data-x="csv">CSV (.csv)</button>
+    <button data-x="json">HRVey session (.json)</button>
+    <button data-x="png">Annotated image (.png)</button>`;
+  document.body.appendChild(menu);
+  const close=()=>{menu.remove(); document.removeEventListener("mousedown",out,true);};
+  const out=ev=>{ if(!menu.contains(ev.target)) close(); };
+  setTimeout(()=>document.addEventListener("mousedown",out,true),0);
+  menu.onclick=ev=>{ const x=ev.target.dataset.x; if(!x) return; close(); doExport(x); };
+}
+function exportData(exam){
+  const rrs=calcRR(), vals=rrs.map(r=>r.ms);
+  const mean=vals.reduce((a,b)=>a+b,0)/vals.length, hr=60000/mean, {rmssd,sdnn}=calcHRV(vals);
+  return {rrs,vals,mean,hr,rmssd,sdnn,exam};
+}
+async function doExport(kind){
+  if(kind==="png") return exportPNG();
+  if(kind==="json"){ return downloadBlob(S.pdfName+".json",
+    new Blob([JSON.stringify(sessionJSON(),null,2)],{type:"application/json"})); }
+  const exam=await promptExam(S.examPrefill);
+  if(!exam) return;
+  const d=exportData(exam);
+  if(kind==="csv") exportCSV(d); else exportXLSX(d);
+}
+function sessionJSON(){
+  return {app:"HRVey", version:1, pdfName:S.pdfName,
+    appliedRotationDeg:S.appliedRotationDeg, levelAngleDeg:0,
+    levelPts:S.levelPts, calPts:S.calPts, pxPerMs:S.pxPerMs, rPeaks:S.rPeaks,
+    exam:S.examPrefill||null};
+}
+function technicalRows(){
+  const lv1=S.levelPts[0]||[null,null], lv2=S.levelPts[1]||[null,null];
+  const c1=S.calPts[0]||[null,null], c2=S.calPts[1]||[null,null];
+  const rows=[
+    ["ecg_file", S.pdfName+".pdf"],
+    ["image_rotation_applied_deg", round(S.appliedRotationDeg,6)],
+    ["level_angle_deg", 0],
+    ["level_pt1_x",lv1[0]],["level_pt1_y",lv1[1]],
+    ["level_pt2_x",lv2[0]],["level_pt2_y",lv2[1]],
+    ["px_per_ms", S.pxPerMs],
+    ["cal_pt1_x",c1[0]],["cal_pt1_y",c1[1]],
+    ["cal_pt2_x",c2[0]],["cal_pt2_y",c2[1]],
+    [],
+    ["peak_order","image_x","image_y"],
+  ];
+  S.rPeaks.forEach((p,i)=>rows.push([i+1,round(p[0],4),round(p[1],4)]));
+  return rows;
+}
+function round(x,n){ const f=Math.pow(10,n); return x==null?null:Math.round(x*f)/f; }
+function exportXLSX(d){
+  const wb=XLSX.utils.book_new();
+  const a=[["subject_id","date","time","heart_rate","rmssd","sdnn","mean_rr","n_peaks","n_intervals"],
+    [d.exam.subjectId,d.exam.date,d.exam.time, round(d.hr,1),
+     d.rmssd==null?null:round(d.rmssd,1), d.sdnn==null?null:round(d.sdnn,1),
+     round(d.mean,1), S.rPeaks.length, d.vals.length]];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a),"Analysis");
+  const rr=[["order","rr_interval_ms","cumulative_time_ms","instantaneous_hr_bpm"]];
+  let cum=0; d.vals.forEach((v,i)=>{ cum+=v; rr.push([i+1,v,cum,round(60000/v,1)]); });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rr),"RR Intervals");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(technicalRows()),"Technical details");
+  const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  downloadBlob(S.pdfName+".xlsx", new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+  setStatus("Exported Excel workbook.", true);
+}
+function exportCSV(d){
+  let s="RR Intervals\n#,RR Interval (ms),Cumulative (ms),Instant HR (bpm)\n";
+  let cum=0; d.vals.forEach((v,i)=>{ cum+=v; s+=`${i+1},${v},${cum},${fmt1(60000/v)}\n`; });
+  s+="\nAnalysis\nSubject,Date,Time,HR (bpm),Mean RR (ms),RMSSD (ms),SDNN (ms)\n";
+  s+=`${d.exam.subjectId},${d.exam.date},${d.exam.time},${fmt1(d.hr)},${Math.round(d.mean)},`+
+     `${d.rmssd==null?"—":fmt1(d.rmssd)},${d.sdnn==null?"—":fmt1(d.sdnn)}\n`;
+  downloadBlob(S.pdfName+".csv", new Blob([s],{type:"text/csv"}));
+  setStatus("Exported CSV.", true);
+}
+function exportPNG(){
+  const w=S.work; if(!w) return;
+  const c=document.createElement("canvas"); c.width=w.w; c.height=w.h;
+  const g=c.getContext("2d"); g.drawImage(w.canvas,0,0);
+  // draw overlays at 1:1 image scale by retargeting D and neutralising the view transform
+  const oz=S.zoom,opx=S.panX,opy=S.panY,oD=D;
+  S.zoom=1; S.panX=0; S.panY=0; D=g;
+  drawLevel(); drawCal(); drawPeaks();
+  D=oD; S.zoom=oz; S.panX=opx; S.panY=opy;
+  c.toBlob(b=>downloadBlob(S.pdfName+"_annotated.png",b),"image/png");
+  setStatus("Exported annotated PNG.", true);
+}
+
+function downloadBlob(name,blob){
+  const u=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),2000);
+}
+
+/* ───────────────────────── Load analysis ───────────────────────── */
+async function loadAnalysisFile(file){
+  if(!S.base){ alertBox("Open a PDF first","Load the matching ECG PDF before loading its analysis."); return; }
+  try{
+    if(/\.json$/i.test(file.name)){
+      const o=JSON.parse(await file.text());
+      applyLoaded(o.appliedRotationDeg||0, null, o.levelPts||[], o.pxPerMs??null, o.calPts||[], o.rPeaks||[]);
+      if(o.exam) S.examPrefill=o.exam;
+    } else {
+      const wb=XLSX.read(new Uint8Array(await file.arrayBuffer()),{type:"array"});
+      const ws=wb.Sheets["Technical details"];
+      if(!ws){ alertBox("Unsupported file","No 'Technical details' sheet — only HRVey/desktop exports can be loaded."); return; }
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:true});
+      const p={}; let peaksAt=-1;
+      for(let i=0;i<rows.length;i++){ const r=rows[i]||[];
+        if(r[0]==="peak_order"){peaksAt=i+1;break;}
+        if(r[0]!=null&&r[0]!=="") p[String(r[0])]=r[1];
+      }
+      const num=k=>p[k]==null||p[k]===""?null:Number(p[k]);
+      const lp=[]; if(num("level_pt1_x")!=null)lp.push([num("level_pt1_x"),num("level_pt1_y")]);
+      if(num("level_pt2_x")!=null)lp.push([num("level_pt2_x"),num("level_pt2_y")]);
+      const cp=[]; if(num("cal_pt1_x")!=null)cp.push([num("cal_pt1_x"),num("cal_pt1_y")]);
+      if(num("cal_pt2_x")!=null)cp.push([num("cal_pt2_x"),num("cal_pt2_y")]);
+      const peaks=[]; for(let i=peaksAt;peaksAt>=0&&i<rows.length;i++){ const r=rows[i]||[];
+        if(r[0]==null||r[0]==="")continue; const x=Number(r[1]),y=Number(r[2]);
+        if(isFinite(x)&&isFinite(y))peaks.push([x,y]); }
+      applyLoaded(num("image_rotation_applied_deg")||0, null, lp, num("px_per_ms"), cp, peaks);
+    }
+    setStatus(`Loaded analysis — ${S.rPeaks.length} peaks restored.`, true);
+  }catch(err){ console.error(err); alertBox("Load error",String(err&&err.message||err)); }
+}
+function applyLoaded(rotDeg, _ignored, levelPts, pxPerMs, calPts, peaks){
+  S.appliedRotationDeg=rotDeg; rebuildWork();
+  S.levelAngle=0; S.levelPts=levelPts; S.pxPerMs=pxPerMs??null; S.calPts=calPts;
+  S.rPeaks=peaks.slice(); S.peakHistory=peaks.slice(); S.selectedPeak=null;
+  S.rPeaks.sort((a,b)=>peakKey(a)-peakKey(b));
+  S.undo.length=0; S.redo.length=0;
+  fitView(); updatePanel();
+}
+
+/* ───────────────────────── Modals ───────────────────────── */
+function openModal(node){
+  const bd=document.createElement("div"); bd.className="backdrop"; bd.appendChild(node);
+  document.body.appendChild(bd);
+  return {bd, close:()=>bd.remove()};
+}
+function promptNumber(title,labelTxt,def){
+  return new Promise(res=>{
+    const n=document.createElement("div"); n.className="modal";
+    n.innerHTML=`<h3>${title}</h3><label>${labelTxt}</label>
+      <input type="number" step="any" min="0.001" value="${def}">
+      <div class="err"></div>
+      <div class="actions"><button class="btn" data-c>Cancel</button><button class="btn primary" data-ok>OK</button></div>`;
+    const {bd,close}=openModal(n);
+    const inp=n.querySelector("input"); inp.focus(); inp.select();
+    const ok=()=>{ const v=parseFloat(inp.value); if(!(v>0)){n.querySelector(".err").textContent="Enter a positive number.";return;} close(); res(v); };
+    n.querySelector("[data-ok]").onclick=ok;
+    n.querySelector("[data-c]").onclick=()=>{close();res(null);};
+    bd.addEventListener("mousedown",e=>{if(e.target===bd){close();res(null);}});
+    inp.addEventListener("keydown",e=>{ if(e.key==="Enter")ok(); if(e.key==="Escape"){close();res(null);} });
+  });
+}
+function promptExam(pre){
+  pre=pre||{}; const now=new Date();
+  const dd=String(now.getDate()).padStart(2,"0"), mm=String(now.getMonth()+1).padStart(2,"0");
+  const date=pre.date||`${dd}/${mm}/${now.getFullYear()}`;
+  const time=pre.time||`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  return new Promise(res=>{
+    const n=document.createElement("div"); n.className="modal";
+    n.innerHTML=`<h3>Exam details</h3><p class="sub">Saved with the exported results.</p>
+      <label>Subject ID</label><input data-id value="${pre.subjectId||""}" placeholder="ID001">
+      <div class="row"><div><label>Date (DD/MM/YYYY)</label><input data-date value="${date}"></div>
+      <div><label>Time (HH:MM)</label><input data-time value="${time}"></div></div>
+      <div class="actions"><button class="btn" data-c>Cancel</button><button class="btn primary" data-ok>Export</button></div>`;
+    const {bd,close}=openModal(n);
+    n.querySelector("[data-id]").focus();
+    n.querySelector("[data-ok]").onclick=()=>{ close(); res({
+      subjectId:n.querySelector("[data-id]").value.trim()||"unknown",
+      date:n.querySelector("[data-date]").value.trim(),
+      time:n.querySelector("[data-time]").value.trim()}); };
+    n.querySelector("[data-c]").onclick=()=>{close();res(null);};
+    bd.addEventListener("mousedown",e=>{if(e.target===bd){close();res(null);}});
+  });
+}
+function alertBox(title,msg){
+  const n=document.createElement("div"); n.className="modal";
+  n.innerHTML=`<h3>${title}</h3><p class="sub">${msg}</p>
+    <div class="actions"><button class="btn primary" data-ok>OK</button></div>`;
+  const {bd,close}=openModal(n);
+  n.querySelector("[data-ok]").onclick=close;
+  bd.addEventListener("mousedown",e=>{if(e.target===bd)close();});
+}
+
+/* ───────────────────────── Keyboard ───────────────────────── */
+document.querySelectorAll("#modes button").forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+window.addEventListener("keydown",e=>{
+  if(/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+  const k=e.key.toLowerCase();
+  if(e.ctrlKey||e.metaKey){
+    if(k==="o"){e.preventDefault();$("#btnOpen").click();}
+    else if(k==="s"){e.preventDefault(); if(!$("#btnExport").disabled)$("#btnExport").click();}
+    else if(k==="z"){e.preventDefault();undo();}
+    else if(k==="y"){e.preventDefault();redo();}
+    return;
+  }
+  if(!S.work) return;
+  if(k==="s") setMode("view");
+  else if(k==="l") setMode("level");
+  else if(k==="c") setMode("calibrate");
+  else if(k==="m") setMode("mark");
+  else if(k==="z"){ const tgt=Math.abs(S.zoom-S.fitZoom)<1e-3?1:S.fitZoom; zoomAt(cssW/2,cssH/2,tgt); }
+  else if(e.key==="Delete"||e.key==="Backspace") deleteSelected();
+});
+
+/* ───────────────────────── Boot ───────────────────────── */
+new ResizeObserver(resize).observe(wrap);
+resize(); updatePanel();
+
+// PWA service worker (only over http/https)
+if("serviceWorker" in navigator && location.protocol.startsWith("http")){
+  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+}
+})();
+</script>
 </body>
 </html>
