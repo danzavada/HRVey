@@ -146,7 +146,7 @@
     <button class="btn" id="btnReset" disabled>Reset</button>
     <span class="spacer"></span>
     <button class="btn" id="btnLoad" title="Load a saved analysis">Load analysis</button>
-    <button class="btn primary" id="btnExport" disabled>Export ▾</button>
+    <button class="btn primary" id="btnExport" disabled>Export .xlsx</button>
   </header>
 
   <div class="workspace">
@@ -387,12 +387,9 @@ function drawPeaks(){
   D.setLineDash([]);
   S.rPeaks.forEach((p,i)=>{
     const [x,y]=i2c(p[0],p[1]), topY=y-L;
-    // stick from the exact click point up to the circle
+    // stick rising from the exact click point (its base = the RR-break spot) to the circle
     D.strokeStyle=COL.peak; D.lineWidth=lw;
     D.beginPath(); D.moveTo(x,y); D.lineTo(x,topY); D.stroke();
-    // small precise marker at the exact click point (where the RR break is)
-    D.beginPath(); D.arc(x,y,Math.max(2,2.4*s),0,7); D.fillStyle=COL.peak; D.fill();
-    D.lineWidth=1; D.strokeStyle="#fff"; D.stroke();
     // beat circle, lifted up so the click spot stays visible
     dot(x,topY,COL.peak,R);
     label(x,topY-R-4*s,String(i+1),COL.peak,fs);
@@ -568,7 +565,7 @@ canvas.addEventListener("dblclick",e=>{
 canvas.addEventListener("wheel",e=>{
   if(!S.work) return; e.preventDefault();
   if(e.ctrlKey){ const [cx,cy]=evPos(e);
-    const k=e.deltaY>0?0.0018:0.0028;          // quicker zoom; out still a touch slower than in
+    const k=e.deltaY>0?0.0024:0.0036;          // quicker zoom; out still a touch slower than in
     zoomAt(cx,cy, S.zoom*Math.exp(-e.deltaY*k)); return; }
   let dx=e.deltaX, dy=e.deltaY;            // deltaX = touchpad two-finger horizontal swipe
   if(e.shiftKey){ dx+=dy; dy=0; }          // Shift+wheel → horizontal for traditional mice
@@ -704,30 +701,16 @@ function parseFilename(name){
 }
 
 /* ───────────────────────── Export ───────────────────────── */
-$("#btnExport").onclick=e=>openExportMenu(e.currentTarget);
-function openExportMenu(anchor){
-  const r=anchor.getBoundingClientRect();
-  const menu=document.createElement("div"); menu.className="menu";
-  menu.style.right=(window.innerWidth-r.right)+"px"; menu.style.top=(r.bottom+6)+"px";
-  menu.innerHTML=`<div class="hint">Export current analysis</div>
-    <button data-x="xlsx">Excel workbook (.xlsx) — 3 tabs</button>
-    <button data-x="csv">CSV (.csv)</button>`;
-  document.body.appendChild(menu);
-  const close=()=>{menu.remove(); document.removeEventListener("mousedown",out,true);};
-  const out=ev=>{ if(!menu.contains(ev.target)) close(); };
-  setTimeout(()=>document.addEventListener("mousedown",out,true),0);
-  menu.onclick=ev=>{ const x=ev.target.dataset.x; if(!x) return; close(); doExport(x); };
-}
+$("#btnExport").onclick=()=>doExport();
 function exportData(exam){
   const rrs=calcRR(), vals=rrs.map(r=>r.ms);
   const mean=vals.reduce((a,b)=>a+b,0)/vals.length, hr=60000/mean, {rmssd,sdnn}=calcHRV(vals);
   return {rrs,vals,mean,hr,rmssd,sdnn,exam};
 }
-async function doExport(kind){
+async function doExport(){
   const exam=await promptExam(S.examPrefill);
   if(!exam) return;
-  const d=exportData(exam);
-  if(kind==="csv") exportCSV(d); else exportXLSX(d);
+  exportXLSX(exportData(exam));
 }
 function sessionJSON(){
   return {app:"HRVey", version:1, pdfName:S.pdfName,
@@ -736,19 +719,16 @@ function sessionJSON(){
     exam:S.examPrefill||null};
 }
 function settingsRows(){
-  // Calibration / level settings only — peak positions now live in the "RR Intervals" tab.
+  // Calibration / level settings only (peak positions live in "RR Intervals").
+  // Wide layout: a single header row + a single values row (one record per file → batch-friendly).
   const lv1=S.levelPts[0]||[null,null], lv2=S.levelPts[1]||[null,null];
   const c1=S.calPts[0]||[null,null], c2=S.calPts[1]||[null,null];
-  return [
-    ["ecg_file", S.pdfName+".pdf"],
-    ["image_rotation_applied_deg", round(S.appliedRotationDeg,6)],
-    ["level_angle_deg", 0],
-    ["level_pt1_x",lv1[0]],["level_pt1_y",lv1[1]],
-    ["level_pt2_x",lv2[0]],["level_pt2_y",lv2[1]],
-    ["px_per_ms", S.pxPerMs],
-    ["cal_pt1_x",c1[0]],["cal_pt1_y",c1[1]],
-    ["cal_pt2_x",c2[0]],["cal_pt2_y",c2[1]],
-  ];
+  const keys=["ecg_file","image_rotation_applied_deg","level_angle_deg",
+    "level_pt1_x","level_pt1_y","level_pt2_x","level_pt2_y",
+    "px_per_ms","cal_pt1_x","cal_pt1_y","cal_pt2_x","cal_pt2_y"];
+  const vals=[S.pdfName+".pdf", round(S.appliedRotationDeg,6), 0,
+    lv1[0],lv1[1],lv2[0],lv2[1], S.pxPerMs, c1[0],c1[1],c2[0],c2[1]];
+  return [keys, vals];
 }
 function round(x,n){ const f=Math.pow(10,n); return x==null?null:Math.round(x*f)/f; }
 function exportXLSX(d){
@@ -774,27 +754,6 @@ function exportXLSX(d){
   downloadBlob(S.pdfName+".xlsx", new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
   setStatus("Exported Excel workbook (Results · RR Intervals · Analysis).", true);
 }
-function exportCSV(d){
-  let s="Results\nFile,Subject,Date,Time,HR (bpm),Mean RR (ms),RMSSD (ms),SDNN (ms)\n";
-  s+=`${S.pdfName}.pdf,${d.exam.subjectId},${d.exam.date},${d.exam.time},${fmt1(d.hr)},${Math.round(d.mean)},`+
-     `${d.rmssd==null?"—":fmt1(d.rmssd)},${d.sdnn==null?"—":fmt1(d.sdnn)}\n\n`;
-  s+="RR Intervals\n#,RR Interval (ms),Cumulative (ms)\n";
-  let cum=0; d.vals.forEach((v,i)=>{ cum+=v; s+=`${i+1},${v},${cum}\n`; });
-  downloadBlob(S.pdfName+".csv", new Blob([s],{type:"text/csv"}));
-  setStatus("Exported CSV.", true);
-}
-function exportPNG(){
-  const w=S.work; if(!w) return;
-  const c=document.createElement("canvas"); c.width=w.w; c.height=w.h;
-  const g=c.getContext("2d"); g.drawImage(w.canvas,0,0);
-  // draw overlays at 1:1 image scale by retargeting D and neutralising the view transform
-  const oz=S.zoom,opx=S.panX,opy=S.panY,oD=D;
-  S.zoom=1; S.panX=0; S.panY=0; D=g;
-  drawLevel(); drawCal(); drawPeaks();
-  D=oD; S.zoom=oz; S.panX=opx; S.panY=opy;
-  c.toBlob(b=>downloadBlob(S.pdfName+"_annotated.png",b),"image/png");
-  setStatus("Exported annotated PNG.", true);
-}
 
 function downloadBlob(name,blob){
   const u=URL.createObjectURL(blob), a=document.createElement("a");
@@ -817,9 +776,9 @@ async function loadAnalysisFile(file){
         const {params,peaks}=parseKVAndPeaks(legacy);
         loadFromParts(params, peaks);
       } else {
-        const ana=wb.Sheets["Analysis"];             // new HRVey: settings only
+        const ana=wb.Sheets["Analysis"];             // new HRVey: settings only (wide layout)
         if(!ana){ alertBox("Unsupported file","No 'Analysis' tab — only HRVey or desktop exports can be loaded."); return; }
-        const {params}=parseKVAndPeaks(ana);
+        const params=parseSettingsSheet(ana);
         const peaks=[]; const rrWs=wb.Sheets["RR Intervals"];   // peak positions live with the RR intervals now
         if(rrWs){ const rows=XLSX.utils.sheet_to_json(rrWs,{header:1,blankrows:true});
           for(let i=1;i<rows.length;i++){ const r=rows[i]||[]; if(r[0]==null||r[0]==="")continue;
@@ -840,6 +799,16 @@ function parseKVAndPeaks(ws){
     if(r[0]==null||r[0]==="")continue; const x=Number(r[1]),y=Number(r[2]);
     if(isFinite(x)&&isFinite(y))peaks.push([x,y]); }
   return {params,peaks};
+}
+function parseSettingsSheet(ws){
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:true}); const p={};
+  if(rows[0] && rows[0].length>2){              // wide layout: header row + values row
+    const keys=rows[0], vals=rows[1]||[];
+    keys.forEach((k,i)=>{ if(k!=null&&k!=="") p[String(k)]=vals[i]; });
+  } else {                                       // vertical key/value fallback
+    for(const r of rows){ if(r&&r[0]!=null&&r[0]!==""&&r[0]!=="peak_order") p[String(r[0])]=r[1]; }
+  }
+  return p;
 }
 function loadFromParts(p, peaks){
   const num=k=>p[k]==null||p[k]===""?null:Number(p[k]);
