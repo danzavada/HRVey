@@ -27,14 +27,6 @@ Fill in the participant details on the right.
 Open the original PDF, then **Load analysis** and choose the exported `.xlsx`. Your level,
 calibration and R-peaks are restored over the scan, so you can re-check or continue the measurement.
 
-## Run
-
-Use the hosted version above, open `index.html` directly, or serve the folder to install it as an offline app:
-
-```sh
-python -m http.server 8000   # then open http://localhost:8000
-```
-
 ## Privacy
 
 All processing happens locally in your browser. ECG files never leave your device.
