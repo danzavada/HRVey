@@ -248,13 +248,13 @@
 <script>
 "use strict";
 (function(){
-// HRVey needs a desktop browser (precise mouse + file pickers). Show a notice on phones/tablets.
+// HRVey needs a desktop browser. Detect phones/tablets by user-agent only — NOT by touch/pointer,
+// which false-positives on touchscreen laptops/desktops.
 const _ua = navigator.userAgent || "";
 const _isMobile =
   (navigator.userAgentData && navigator.userAgentData.mobile === true) ||
-  /Android|iPhone|iPod|Mobile|Windows Phone|webOS|BlackBerry|IEMobile|Opera Mini|Silk|Tablet|PlayBook/i.test(_ua) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||         // iPadOS reports as Mac
-  (window.matchMedia && matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches);
+  /Android|iPhone|iPod|iPad|Mobile|Windows Phone|webOS|BlackBerry|IEMobile|Opera Mini/i.test(_ua) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);   // iPadOS reports as Mac
 if(_isMobile){
   const g=document.getElementById("mobileGate"); if(g) g.hidden=false;
   return;
