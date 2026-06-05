@@ -83,6 +83,7 @@
     .adjust:hover .adjust-btn,.adjust-btn:focus{opacity:1}
     .adjust-panel{position:absolute;right:0;bottom:32px;background:var(--panel);border:1px solid var(--line);
       border-radius:10px;padding:10px;box-shadow:0 14px 40px rgba(15,30,35,.2);display:flex;flex-direction:column;gap:8px;width:172px}
+    .adjust-panel[hidden]{display:none}
     .adjust-panel label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
     .adjust-panel input[type=range]{width:100%;accent-color:var(--accent-d)}
     .adjust-reset{font:inherit;font-size:12px;color:var(--ink);background:var(--btn);border:1px solid var(--line);border-radius:7px;padding:5px;cursor:pointer}
@@ -115,8 +116,8 @@
     .stats .k{color:var(--muted)}
     .stats .v{text-align:right;font-weight:600}
     .stats .v.big{color:var(--ink);font-size:15px}
-    .meta{border-top:1px solid var(--line);padding:8px 14px;font-size:12px;color:var(--muted);
-      display:grid;grid-template-columns:auto 1fr;gap:4px 8px}
+    .meta{border-top:1px solid var(--line);padding:8px 12px;font-size:11px;color:var(--muted);
+      display:grid;grid-template-columns:auto 1fr;gap:4px 6px}
     .meta .v{text-align:right;color:#2a363a}
 
     /* ── Status bar ── */
@@ -181,7 +182,7 @@
         <span class="k">SDNN</span><span class="v" id="sSDNN">—</span>
       </div>
       <div class="meta">
-        <span class="k">Cal</span><span class="v" id="mCal">not set</span>
+        <span class="k">Calibration</span><span class="v" id="mCal">not set</span>
         <span class="k">Level</span><span class="v" id="mLevel">0.00°</span>
         <span class="k">Peaks</span><span class="v" id="mPeaks">0</span>
       </div>
@@ -328,11 +329,11 @@ function evPos(e){
 function clampZoom(z){ return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z)); }
 function clampPan(){
   if (!S.work) return;
-  const w = S.work.w*S.zoom, h = S.work.h*S.zoom;
-  // Larger than viewport → fill it (no empty edges). Smaller → keep it fully on-screen
-  // but allow sliding it side-to-side / up-down within the viewport.
-  S.panX = w <= cssW ? Math.min(cssW-w, Math.max(0, S.panX)) : Math.min(0, Math.max(cssW-w, S.panX));
-  S.panY = h <= cssH ? Math.min(cssH-h, Math.max(0, S.panY)) : Math.min(0, Math.max(cssH-h, S.panY));
+  const w = S.work.w*S.zoom, h = S.work.h*S.zoom, m = 48;
+  // Axis larger than the viewport → clamp to its edges (no empty space past the image).
+  // Axis smaller → keep at least m px on screen (so zoom stays anchored to the cursor and you can slide it).
+  S.panX = w >= cssW ? Math.min(0, Math.max(cssW-w, S.panX)) : Math.min(cssW-m, Math.max(m-w, S.panX));
+  S.panY = h >= cssH ? Math.min(0, Math.max(cssH-h, S.panY)) : Math.min(cssH-m, Math.max(m-h, S.panY));
 }
 function computeFit(){
   if(!S.work) return MIN_ZOOM;
@@ -698,8 +699,25 @@ function deleteSelected(){
 
 /* ───────────────────────── File: open / rotate / reset ───────────────────────── */
 let pendingLoadKind="pdf";
-$("#btnOpen").onclick=()=>{ pendingLoadKind="pdf"; const fi=$("#fileInput"); fi.accept=".pdf,application/pdf"; fi.click(); };
-$("#btnLoad").onclick=()=>{ pendingLoadKind="analysis"; const fi=$("#fileInput"); fi.accept=".json,.xlsx"; fi.click(); };
+// File System Access API (Chromium) remembers the last folder per picker id ("hrvey"),
+// shared across open + save. Falls back to a normal file input where unavailable.
+async function pickAndOpen(kind){
+  if(window.showOpenFilePicker){
+    try{
+      const types = kind==="pdf"
+        ? [{description:"ECG PDF", accept:{"application/pdf":[".pdf"]}}]
+        : [{description:"HRVey analysis", accept:{"application/json":[".json"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":[".xlsx"]}}];
+      const [h]=await window.showOpenFilePicker({id:"hrvey", startIn:"documents", multiple:false, types});
+      const file=await h.getFile();
+      if(kind==="pdf") openPdfFile(file); else loadAnalysisFile(file);
+      return;
+    }catch(err){ if(err && err.name==="AbortError") return; console.warn("Open picker unavailable, using fallback",err); }
+  }
+  pendingLoadKind=kind; const fi=$("#fileInput"); fi.accept = kind==="pdf"?".pdf,application/pdf":".json,.xlsx"; fi.click();
+}
+$("#btnOpen").onclick=()=>pickAndOpen("pdf");
+$("#btnLoad").onclick=()=>pickAndOpen("analysis");
 $("#fileInput").onchange=e=>{ const f=e.target.files[0]; if(!f) return; e.target.value="";
   if(pendingLoadKind==="pdf") openPdfFile(f); else loadAnalysisFile(f); };
 
@@ -787,6 +805,7 @@ $("#fSpeed").onchange=()=>{
 function setAdjust(c,b){ S.contrast=(c==null?1:c); S.brightness=(b==null?1:b);
   $("#adjContrast").value=S.contrast; $("#adjBright").value=S.brightness; redraw(); }
 $("#adjBtn").onclick=()=>{ const p=$("#adjPanel"); p.hidden=!p.hidden; };
+document.addEventListener("mousedown",e=>{ const a=$("#adjust"); if(a && !a.contains(e.target)) $("#adjPanel").hidden=true; });
 $("#adjContrast").oninput=e=>{ S.contrast=parseFloat(e.target.value)||1; redraw(); persistSession(); };
 $("#adjBright").oninput=e=>{ S.brightness=parseFloat(e.target.value)||1; redraw(); persistSession(); };
 $("#adjReset").onclick=()=>{ setAdjust(1,1); persistSession(); };
@@ -865,14 +884,29 @@ function exportXLSX(d){
   // Tab 3 — Analysis (calibration / level settings only)
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(settingsRows()),"Analysis");
   const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
-  downloadBlob(S.pdfName+".xlsx", new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
-  setStatus("Exported Excel workbook (Results · RR Intervals · Analysis).", true);
+  const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  saveBlob(S.pdfName+".xlsx", blob, {description:"Excel workbook",
+    accept:{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":[".xlsx"]}})
+    .then(ok=>{ if(ok) setStatus("Exported Excel workbook (Results · RR Intervals · Analysis).", true); });
 }
 
 function downloadBlob(name,blob){
   const u=URL.createObjectURL(blob), a=document.createElement("a");
   a.href=u; a.download=name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(u),2000);
+}
+async function saveBlob(name, blob, accept){
+  // FSA save remembers the last folder (shared id "hrvey"); fall back to a download otherwise
+  if(window.showSaveFilePicker){
+    try{
+      const opts={ id:"hrvey", suggestedName:name, startIn:"documents" };
+      if(accept) opts.types=[accept];
+      const h=await window.showSaveFilePicker(opts);
+      const w=await h.createWritable(); await w.write(blob); await w.close();
+      return true;
+    }catch(err){ if(err && err.name==="AbortError") return false; console.warn("Save picker failed, downloading",err); }
+  }
+  downloadBlob(name, blob); return true;
 }
 
 /* ───────────────────────── Load analysis ───────────────────────── */
