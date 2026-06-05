@@ -1,5 +1,5 @@
 /* HRVey service worker — offline app shell (cache-first) */
-const CACHE = "hrvey-v3";
+const CACHE = "hrvey-v4";
 const ASSETS = [
   "./",
   "./index.html",
@@ -29,15 +29,22 @@ self.addEventListener("activate", e => {
   );
 });
 
+function cachePut(req, resp){ const c = resp.clone(); caches.open(CACHE).then(x => x.put(req, c)).catch(() => {}); return resp; }
+
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
-  e.respondWith(
-    caches.match(e.request).then(hit =>
-      hit || fetch(e.request).then(resp => {
-        const copy = resp.clone();
-        caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
-        return resp;
-      }).catch(() => caches.match("./index.html"))
-    )
-  );
+  const req = e.request;
+  const isHTML = req.mode === "navigate" || (req.headers.get("accept") || "").includes("text/html");
+  if (isHTML) {
+    // network-first so the app updates as soon as it's online; fall back to cache offline
+    e.respondWith(
+      fetch(req).then(r => cachePut(req, r))
+        .catch(() => caches.match(req).then(m => m || caches.match("./index.html")))
+    );
+  } else {
+    // assets: cache-first, fill cache on miss
+    e.respondWith(
+      caches.match(req).then(hit => hit || fetch(req).then(r => cachePut(req, r)))
+    );
+  }
 });

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="description" content="HRVey — an HRV analysis tool for 10-second ECG PDFs. Runs entirely in your browser.">
   <meta name="theme-color" content="#eef2f4">
-  <title>HRVey — HRV analysis for 10s ECG PDFs</title>
+  <title>HRV analysis for 10s ECG PDFs</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
@@ -127,7 +127,7 @@
 <body>
 <div id="app">
   <header class="toolbar">
-    <span class="brand"><img src="icons/icon-192.png" alt=""><span>HRVey</span><small>10s ECG · HRV</small></span>
+    <span class="brand"><img src="icons/icon-192.png" alt=""><span>HRVey</span></span>
     <button class="btn" id="btnOpen" title="Open PDF (Ctrl+O)">Open PDF</button>
     <button class="btn" id="btnRotate" title="Rotate 90°" disabled>Rotate 90°</button>
     <span class="sep"></span>
@@ -143,7 +143,7 @@
     <button class="btn" id="btnClearPeaks" disabled>Clear Peaks</button>
     <button class="btn" id="btnReset" disabled>Reset</button>
     <span class="spacer"></span>
-    <button class="btn" id="btnLoad" title="Load a saved analysis">Load</button>
+    <button class="btn" id="btnLoad" title="Load a saved analysis">Load analysis</button>
     <button class="btn primary" id="btnExport" disabled>Export ▾</button>
   </header>
 
@@ -490,7 +490,8 @@ function nearestPeak(ix,iy,thr){
 
 /* ───────────────────────── Mouse ───────────────────────── */
 function applyCursor(){ canvas.style.cursor = !S.work ? "default" : (S.mode==="view" ? "grab" : "crosshair"); }
-let drag=null, suppressClick=false;
+let drag=null, suppressClick=false, lastPos=null;
+canvas.addEventListener("mousemove",e=>{ const p=evPos(e); lastPos={x:p[0],y:p[1]}; });   // for Z-zoom-at-cursor
 canvas.addEventListener("mousedown",e=>{
   if(!S.work) return;
   // Pan with: middle button, left button in Select mode, or Shift+left in any mode.
@@ -545,7 +546,9 @@ canvas.addEventListener("dblclick",e=>{
 });
 canvas.addEventListener("wheel",e=>{
   if(!S.work) return; e.preventDefault();
-  if(e.ctrlKey){ const [cx,cy]=evPos(e); zoomAt(cx,cy, S.zoom*(e.deltaY<0?1.12:1/1.12)); return; }
+  if(e.ctrlKey){ const [cx,cy]=evPos(e);
+    const k=e.deltaY>0?0.0012:0.0020;          // zoom OUT a bit slower than in; scales with delta (smooth on trackpads)
+    zoomAt(cx,cy, S.zoom*Math.exp(-e.deltaY*k)); return; }
   let dx=e.deltaX, dy=e.deltaY;            // deltaX = touchpad two-finger horizontal swipe
   if(e.shiftKey){ dx+=dy; dy=0; }          // Shift+wheel → horizontal for traditional mice
   S.panX-=dx; S.panY-=dy; clampPan(); redraw();
@@ -685,10 +688,8 @@ function openExportMenu(anchor){
   const menu=document.createElement("div"); menu.className="menu";
   menu.style.right=(window.innerWidth-r.right)+"px"; menu.style.top=(r.bottom+6)+"px";
   menu.innerHTML=`<div class="hint">Export current analysis</div>
-    <button data-x="xlsx">Excel workbook (.xlsx)</button>
-    <button data-x="csv">CSV (.csv)</button>
-    <button data-x="json">HRVey session (.json)</button>
-    <button data-x="png">Annotated image (.png)</button>`;
+    <button data-x="xlsx">Excel workbook (.xlsx) — 3 tabs</button>
+    <button data-x="csv">CSV (.csv)</button>`;
   document.body.appendChild(menu);
   const close=()=>{menu.remove(); document.removeEventListener("mousedown",out,true);};
   const out=ev=>{ if(!menu.contains(ev.target)) close(); };
@@ -701,9 +702,6 @@ function exportData(exam){
   return {rrs,vals,mean,hr,rmssd,sdnn,exam};
 }
 async function doExport(kind){
-  if(kind==="png") return exportPNG();
-  if(kind==="json"){ return downloadBlob(S.pdfName+".json",
-    new Blob([JSON.stringify(sessionJSON(),null,2)],{type:"application/json"})); }
   const exam=await promptExam(S.examPrefill);
   if(!exam) return;
   const d=exportData(exam);
@@ -736,25 +734,28 @@ function technicalRows(){
 function round(x,n){ const f=Math.pow(10,n); return x==null?null:Math.round(x*f)/f; }
 function exportXLSX(d){
   const wb=XLSX.utils.book_new();
-  const a=[["subject_id","date","time","heart_rate","rmssd","sdnn","mean_rr","n_peaks","n_intervals"],
-    [d.exam.subjectId,d.exam.date,d.exam.time, round(d.hr,1),
-     d.rmssd==null?null:round(d.rmssd,1), d.sdnn==null?null:round(d.sdnn,1),
-     round(d.mean,1), S.rPeaks.length, d.vals.length]];
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(a),"Analysis");
+  // Tab 1 — Results (summary, incl. the analyzed file name)
+  const results=[
+    ["ecg_file","subject_id","date","time","heart_rate","mean_rr","rmssd","sdnn","n_peaks","n_intervals"],
+    [S.pdfName+".pdf", d.exam.subjectId, d.exam.date, d.exam.time, round(d.hr,1), round(d.mean,1),
+     d.rmssd==null?null:round(d.rmssd,1), d.sdnn==null?null:round(d.sdnn,1), S.rPeaks.length, d.vals.length]];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(results),"Results");
+  // Tab 2 — RR Intervals
   const rr=[["order","rr_interval_ms","cumulative_time_ms","instantaneous_hr_bpm"]];
   let cum=0; d.vals.forEach((v,i)=>{ cum+=v; rr.push([i+1,v,cum,round(60000/v,1)]); });
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rr),"RR Intervals");
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(technicalRows()),"Technical details");
+  // Tab 3 — Analysis (settings + peak positions, so it can be re-loaded later)
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(technicalRows()),"Analysis");
   const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
   downloadBlob(S.pdfName+".xlsx", new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
-  setStatus("Exported Excel workbook.", true);
+  setStatus("Exported Excel workbook (Results · RR Intervals · Analysis).", true);
 }
 function exportCSV(d){
-  let s="RR Intervals\n#,RR Interval (ms),Cumulative (ms),Instant HR (bpm)\n";
+  let s="Results\nFile,Subject,Date,Time,HR (bpm),Mean RR (ms),RMSSD (ms),SDNN (ms)\n";
+  s+=`${S.pdfName}.pdf,${d.exam.subjectId},${d.exam.date},${d.exam.time},${fmt1(d.hr)},${Math.round(d.mean)},`+
+     `${d.rmssd==null?"—":fmt1(d.rmssd)},${d.sdnn==null?"—":fmt1(d.sdnn)}\n\n`;
+  s+="RR Intervals\n#,RR Interval (ms),Cumulative (ms),Instant HR (bpm)\n";
   let cum=0; d.vals.forEach((v,i)=>{ cum+=v; s+=`${i+1},${v},${cum},${fmt1(60000/v)}\n`; });
-  s+="\nAnalysis\nSubject,Date,Time,HR (bpm),Mean RR (ms),RMSSD (ms),SDNN (ms)\n";
-  s+=`${d.exam.subjectId},${d.exam.date},${d.exam.time},${fmt1(d.hr)},${Math.round(d.mean)},`+
-     `${d.rmssd==null?"—":fmt1(d.rmssd)},${d.sdnn==null?"—":fmt1(d.sdnn)}\n`;
   downloadBlob(S.pdfName+".csv", new Blob([s],{type:"text/csv"}));
   setStatus("Exported CSV.", true);
 }
@@ -787,8 +788,9 @@ async function loadAnalysisFile(file){
       if(o.exam) S.examPrefill=o.exam;
     } else {
       const wb=XLSX.read(new Uint8Array(await file.arrayBuffer()),{type:"array"});
-      const ws=wb.Sheets["Technical details"];
-      if(!ws){ alertBox("Unsupported file","No 'Technical details' sheet — only HRVey/desktop exports can be loaded."); return; }
+      // new HRVey files store settings in the "Analysis" tab; legacy/desktop files use "Technical details"
+      const ws=wb.Sheets["Technical details"]||wb.Sheets["Analysis"];
+      if(!ws){ alertBox("Unsupported file","No 'Analysis' tab — only HRVey or desktop exports can be loaded."); return; }
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:true});
       const p={}; let peaksAt=-1;
       for(let i=0;i<rows.length;i++){ const r=rows[i]||[];
@@ -919,7 +921,10 @@ window.addEventListener("keydown",e=>{
   else if(k==="l") setMode("level");
   else if(k==="c") setMode("calibrate");
   else if(k==="m") setMode("mark");
-  else if(k==="z"){ const tgt=Math.abs(S.zoom-S.fitZoom)<1e-3?1:S.fitZoom; zoomAt(cssW/2,cssH/2,tgt); }
+  else if(k==="z"){                            // Z: zoom to max at the cursor; press again to fit
+    if(S.zoom>=MAX_ZOOM-1e-3) fitView();
+    else { const p=lastPos||{x:cssW/2,y:cssH/2}; zoomAt(p.x,p.y,MAX_ZOOM); }
+  }
   else if(e.key==="Delete"||e.key==="Backspace") deleteSelected();
 });
 
