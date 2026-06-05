@@ -2,7 +2,7 @@
 
 HRV analysis for scanned 10-second ECG PDFs. Runs entirely in your browser, nothing uploaded.
 
-Hosted version: https://danielzavada.cz/hrvey
+Hosted version: https://danzavada.github.io/HRVey/
 
 ## Introduction
 
