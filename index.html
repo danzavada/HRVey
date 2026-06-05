@@ -87,9 +87,9 @@
     .form input{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);
       border-radius:8px;padding:8px 9px;-webkit-user-select:text;user-select:text}
     .form input:focus{outline:none;border-color:var(--accent)}
-    .field-btn{font:inherit;text-align:left;color:var(--ink);background:var(--btn);border:1px solid var(--line);
+    .form select{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);
       border-radius:8px;padding:8px 9px;cursor:pointer;margin-top:3px}
-    .field-btn:hover{background:var(--btn-h)}
+    .form select:focus{outline:none;border-color:var(--accent)}
     .rrlist{flex:1;overflow:auto;margin:0;padding:0 6px;list-style:none;min-height:60px}
     .rrlist li{font-variant-numeric:tabular-nums;padding:4px 8px;border-radius:6px;font-size:13px;
       display:flex;justify-content:space-between;color:#2a363a}
@@ -185,8 +185,13 @@
         <input id="fDate" placeholder="DD/MM/YYYY" autocomplete="off">
         <label for="fTime">Time (HH:MM)</label>
         <input id="fTime" placeholder="HH:MM" autocomplete="off">
-        <label>Paper speed</label>
-        <button class="field-btn" id="fSpeed" title="Click to change paper speed">25 mm/s</button>
+        <label for="fSpeed">Paper speed</label>
+        <select id="fSpeed">
+          <option value="12.5">12.5 mm/s</option>
+          <option value="25" selected>25 mm/s</option>
+          <option value="50">50 mm/s</option>
+          <option value="custom">Custom…</option>
+        </select>
       </div>
     </aside>
   </div>
@@ -302,10 +307,10 @@ function clampZoom(z){ return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z)); }
 function clampPan(){
   if (!S.work) return;
   const w = S.work.w*S.zoom, h = S.work.h*S.zoom;
-  // If the image is larger than the viewport, keep the viewport inside the image
-  // (no empty background past the edges); otherwise centre it.
-  S.panX = w <= cssW ? (cssW-w)/2 : Math.min(0, Math.max(cssW-w, S.panX));
-  S.panY = h <= cssH ? (cssH-h)/2 : Math.min(0, Math.max(cssH-h, S.panY));
+  // Larger than viewport → fill it (no empty edges). Smaller → keep it fully on-screen
+  // but allow sliding it side-to-side / up-down within the viewport.
+  S.panX = w <= cssW ? Math.min(cssW-w, Math.max(0, S.panX)) : Math.min(0, Math.max(cssW-w, S.panX));
+  S.panY = h <= cssH ? Math.min(cssH-h, Math.max(0, S.panY)) : Math.min(0, Math.max(cssH-h, S.panY));
 }
 function computeFit(){
   if(!S.work) return MIN_ZOOM;
@@ -728,12 +733,22 @@ function parseFilename(name){
 
 /* ───────────────────────── Export ───────────────────────── */
 $("#btnExport").onclick=()=>doExport();
-$("#fSpeed").onclick=()=>{
-  promptNumber("Paper speed","Paper speed (mm/s):", S.paperSpeed).then(v=>{
-    if(!v) return; const old=S.paperSpeed; setSpeed(v);
-    if(S.pxPerMs!=null) S.pxPerMs*=v/old;          // keep timing consistent (px_per_ms ∝ paper speed)
-    redraw(); updatePanel(); setStatus(`Paper speed set to ${v} mm/s.`, true);
-  });
+function applySpeedChange(v){
+  const old=S.paperSpeed; setSpeed(v);
+  if(S.pxPerMs!=null) S.pxPerMs*=v/old;            // keep timing consistent (px_per_ms ∝ paper speed)
+  redraw(); updatePanel(); persistSession();
+  setStatus(`Paper speed set to ${v} mm/s.`, true);
+}
+$("#fSpeed").onchange=()=>{
+  const sel=$("#fSpeed");
+  if(sel.value==="custom"){
+    promptNumber("Paper speed","Paper speed (mm/s):", S.paperSpeed).then(v=>{
+      if(!v){ setSpeed(S.paperSpeed); return; }     // cancelled → revert dropdown
+      applySpeedChange(v);
+    });
+    return;
+  }
+  applySpeedChange(Number(sel.value));
 };
 ["#fSubject","#fDate","#fTime"].forEach(id=>$(id).addEventListener("input",persistSession));
 function exportData(exam){
@@ -758,7 +773,18 @@ function setExamFields(o){
   $("#fDate").value=o.date||`${dd}/${mm}/${now.getFullYear()}`;
   $("#fTime").value=o.time||`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
 }
-function setSpeed(v){ S.paperSpeed=v; $("#fSpeed").textContent=`${v} mm/s`; }
+function setSpeed(v){
+  v=Number(v)||25; S.paperSpeed=v;
+  const sel=$("#fSpeed"); if(!sel) return;
+  const fixed=[...sel.options].find(o=>o.value!=="custom" && !o.dataset.dyn && Number(o.value)===v);
+  let dyn=[...sel.options].find(o=>o.dataset.dyn);
+  if(fixed){ if(dyn) dyn.remove(); sel.value=fixed.value; }
+  else{
+    if(!dyn){ dyn=document.createElement("option"); dyn.dataset.dyn="1";
+      sel.insertBefore(dyn, sel.querySelector('option[value="custom"]')); }
+    dyn.value=String(v); dyn.textContent=`${v} mm/s`; sel.value=String(v);
+  }
+}
 function doExport(){ exportXLSX(exportData(getExam())); }
 function sessionJSON(){
   return {app:"HRVey", version:1, pdfName:S.pdfName,
