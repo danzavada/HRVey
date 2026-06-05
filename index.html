@@ -4,17 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="description" content="HRVey — an HRV analysis tool for 10-second ECG PDFs. Runs entirely in your browser.">
-  <meta name="theme-color" content="#0c1016">
+  <meta name="theme-color" content="#efe7d6">
   <title>HRVey — HRV analysis for 10s ECG PDFs</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <style>
     :root{
-      --bg:#0c1016; --panel:#141a22; --panel2:#0f141b; --line:#222b36;
-      --ink:#e8eaed; --muted:#8b94a0; --accent:#39d98a; --accent-d:#2bb673;
-      --green:#2ecc71; --orange:#e67e22; --red:#ef5350; --blue:#6aa8ff;
-      --btn:#1b2330; --btn-h:#27313f; --btn-a:#39d98a;
+      --bg:#efe7d6; --panel:#faf5ea; --panel2:#e8dfcd; --line:#ddd2bd;
+      --ink:#2c2823; --muted:#8a8170; --accent:#2f9e63; --accent-d:#268a54;
+      --green:#2ecc71; --orange:#e67e22; --red:#ef5350; --blue:#3b82f6;
+      --btn:#efe6d4; --btn-h:#e6dcc6;
     }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
@@ -31,7 +31,7 @@
       padding:8px 10px; background:var(--panel); border-bottom:1px solid var(--line);
     }
     .brand{display:flex;align-items:center;gap:8px;font-weight:700;margin-right:4px;letter-spacing:-.02em}
-    .brand img{width:22px;height:22px;border-radius:5px}
+    .brand img{width:24px;height:24px;border-radius:6px;display:block}
     .brand small{font-weight:500;color:var(--muted);font-size:11px}
     .sep{width:1px;align-self:stretch;background:var(--line);margin:2px 4px}
     .spacer{flex:1}
@@ -43,7 +43,7 @@
     button.btn:hover{background:var(--btn-h)}
     button.btn:active{transform:translateY(1px)}
     button.btn:disabled{opacity:.4;cursor:not-allowed}
-    button.btn.primary{background:var(--accent-d);border-color:var(--accent-d);color:#04130b;font-weight:600}
+    button.btn.primary{background:var(--accent-d);border-color:var(--accent-d);color:#fff;font-weight:600}
     button.btn.primary:hover{background:var(--accent)}
     .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
     .seg button{
@@ -52,22 +52,22 @@
     }
     .seg button:last-child{border-right:0}
     .seg button:hover{background:var(--btn)}
-    .seg button.on{background:var(--accent-d);color:#04130b;font-weight:600}
+    .seg button.on{background:var(--accent-d);color:#fff;font-weight:600}
     .seg button kbd{font:inherit;opacity:.6;margin-left:5px}
 
     /* ── Workspace ── */
     .workspace{flex:1;display:flex;min-height:0}
     .canvas-wrap{flex:1;position:relative;min-width:0;background:
-      repeating-conic-gradient(#0a0e13 0% 25%, #0c1016 0% 50%) 50%/24px 24px}
+      repeating-conic-gradient(#e7ddca 0% 25%, #efe7d6 0% 50%) 50%/24px 24px}
     #ecg{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
     .canvas-wrap.empty::after{
       content:"Open a 10-second ECG PDF to begin  ·  drag & drop, or press Ctrl+O";
       position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
       color:var(--muted);font-size:15px;pointer-events:none;padding:24px;text-align:center;
     }
-    .canvas-wrap.drag{outline:2px dashed var(--accent);outline-offset:-10px}
+    .canvas-wrap.drag{outline:2px dashed var(--blue);outline-offset:-10px}
     .zoombadge{
-      position:absolute;left:10px;bottom:10px;background:#0009;border:1px solid var(--line);
+      position:absolute;left:10px;bottom:10px;background:rgba(255,255,255,.82);border:1px solid var(--line);
       border-radius:6px;padding:3px 8px;font-size:12px;color:var(--muted);pointer-events:none
     }
 
@@ -80,18 +80,18 @@
       margin:0;padding:12px 14px 8px;font-weight:600}
     .rrlist{flex:1;overflow:auto;margin:0;padding:0 6px;list-style:none;min-height:60px}
     .rrlist li{font-variant-numeric:tabular-nums;padding:4px 8px;border-radius:6px;font-size:13px;
-      display:flex;justify-content:space-between;color:#cdd3db}
-    .rrlist li:nth-child(odd){background:#0f141b}
+      display:flex;justify-content:space-between;color:#463f34}
+    .rrlist li:nth-child(odd){background:rgba(0,0,0,.04)}
     .rrlist li .i{color:var(--muted)}
     .rrlist .empty{color:var(--muted);padding:8px;font-style:italic}
     .stats{border-top:1px solid var(--line);padding:10px 14px;display:grid;grid-template-columns:auto 1fr;
       gap:6px 10px;font-variant-numeric:tabular-nums}
     .stats .k{color:var(--muted)}
     .stats .v{text-align:right;font-weight:600}
-    .stats .v.big{color:var(--accent);font-size:15px}
+    .stats .v.big{color:var(--accent-d);font-size:15px}
     .meta{border-top:1px solid var(--line);padding:8px 14px;font-size:12px;color:var(--muted);
       display:grid;grid-template-columns:auto 1fr;gap:4px 8px}
-    .meta .v{text-align:right;color:#cdd3db}
+    .meta .v{text-align:right;color:#463f34}
 
     /* ── Status bar ── */
     .statusbar{display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--panel2);
@@ -100,25 +100,25 @@
     .statusbar.ok .dot{background:var(--accent)}
 
     /* ── Modal ── */
-    .backdrop{position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:50}
+    .backdrop{position:fixed;inset:0;background:rgba(40,34,24,.45);display:flex;align-items:center;justify-content:center;z-index:50}
     .modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;
-      padding:18px 18px 16px;min-width:300px;max-width:92vw;box-shadow:0 18px 60px #000a}
+      padding:18px 18px 16px;min-width:300px;max-width:92vw;box-shadow:0 18px 60px rgba(50,40,25,.28)}
     .modal h3{margin:0 0 4px;font-size:16px}
     .modal p.sub{margin:0 0 14px;color:var(--muted);font-size:13px}
     .modal label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
-    .modal input{width:100%;font:inherit;color:var(--ink);background:var(--panel2);
+    .modal input{width:100%;font:inherit;color:var(--ink);background:#fffdf8;
       border:1px solid var(--line);border-radius:8px;padding:9px 10px;-webkit-user-select:text;user-select:text}
     .modal input:focus{outline:none;border-color:var(--accent)}
     .modal .row{display:flex;gap:10px}
     .modal .row>div{flex:1}
     .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
     .menu{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:10px;
-      padding:6px;z-index:60;box-shadow:0 14px 40px #000a;min-width:180px}
+      padding:6px;z-index:60;box-shadow:0 14px 40px rgba(50,40,25,.22);min-width:180px}
     .menu button{display:block;width:100%;text-align:left;background:transparent;border:0;color:var(--ink);
       font:inherit;padding:8px 10px;border-radius:7px;cursor:pointer}
     .menu button:hover{background:var(--btn)}
     .menu .hint{color:var(--muted);font-size:11px;padding:4px 10px 6px}
-    .err{color:#ff8a80;font-size:12px;margin-top:8px;min-height:14px}
+    .err{color:#c0392b;font-size:12px;margin-top:8px;min-height:14px}
   </style>
 </head>
 <body>
@@ -136,7 +136,7 @@
     </span>
     <span class="sep"></span>
     <button class="btn" id="btnFit" title="Fit to window (Z toggles)" disabled>Fit</button>
-    <button class="btn" id="btnClearCal" disabled>Clear Cal</button>
+    <button class="btn" id="btnClearCal" disabled>Clear calibration</button>
     <button class="btn" id="btnClearPeaks" disabled>Clear Peaks</button>
     <button class="btn" id="btnReset" disabled>Reset</button>
     <span class="spacer"></span>
@@ -274,9 +274,11 @@ function evPos(e){
 function clampZoom(z){ return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z)); }
 function clampPan(){
   if (!S.work) return;
-  const w = S.work.w*S.zoom, h = S.work.h*S.zoom, M = 60;
-  S.panX = Math.min(cssW-M, Math.max(M-w, S.panX));
-  S.panY = Math.min(cssH-M, Math.max(M-h, S.panY));
+  const w = S.work.w*S.zoom, h = S.work.h*S.zoom;
+  // If the image is larger than the viewport, keep the viewport inside the image
+  // (no empty background past the edges); otherwise centre it.
+  S.panX = w <= cssW ? (cssW-w)/2 : Math.min(0, Math.max(cssW-w, S.panX));
+  S.panY = h <= cssH ? (cssH-h)/2 : Math.min(0, Math.max(cssH-h, S.panY));
 }
 function fitView(){
   if (!S.work) return;
@@ -463,11 +465,11 @@ function redo(){ if(!S.redo.length) return; S.undo.push(snapshot()); restore(S.r
 function setMode(m){
   S.mode=m;
   document.querySelectorAll("#modes button").forEach(b=>b.classList.toggle("on",b.dataset.mode===m));
-  const hint={view:"Select: click a peak to select; use the wheel to zoom/pan.",
+  const hint={view:"Select: click-drag to move · wheel to zoom (Ctrl+wheel) and pan · click a peak to select.",
     level:"Level: click two points on a horizontal feature (a grid line or baseline).",
     calibrate:"Calibrate: click two points a known time apart (e.g. one large square = 200 ms).",
     mark:"Mark Peaks: click each R-peak. Right-click or Delete removes one."}[m];
-  setStatus(hint);
+  setStatus(hint); applyCursor();
 }
 function nearestPeak(ix,iy,thr){
   let bi=-1, bd=Infinity;
@@ -476,20 +478,29 @@ function nearestPeak(ix,iy,thr){
 }
 
 /* ───────────────────────── Mouse ───────────────────────── */
-let panning=null;
+function applyCursor(){ canvas.style.cursor = !S.work ? "default" : (S.mode==="view" ? "grab" : "crosshair"); }
+let drag=null, suppressClick=false;
 canvas.addEventListener("mousedown",e=>{
-  if(e.button===1 || (e.button===0 && S.mode==="view" && e.shiftKey)){
-    panning={x:e.clientX,y:e.clientY}; e.preventDefault();
-  }
+  if(!S.work) return;
+  // Pan with: middle button, left button in Select mode, or Shift+left in any mode.
+  const panBtn = e.button===1 || (e.button===0 && (S.mode==="view" || e.shiftKey));
+  if(panBtn){ drag={x:e.clientX,y:e.clientY,moved:false}; canvas.style.cursor="grabbing"; e.preventDefault(); }
 });
 window.addEventListener("mousemove",e=>{
-  if(panning){ S.panX+=e.clientX-panning.x; S.panY+=e.clientY-panning.y;
-    panning={x:e.clientX,y:e.clientY}; clampPan(); redraw(); }
+  if(!drag) return;
+  const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+  if(!drag.moved && Math.hypot(dx,dy)<4) return;     // ignore tiny jitters so a click stays a click
+  drag.moved=true;
+  S.panX+=dx; S.panY+=dy; drag.x=e.clientX; drag.y=e.clientY;
+  clampPan(); redraw();
 });
-window.addEventListener("mouseup",()=>{ panning=null; });
+window.addEventListener("mouseup",()=>{
+  if(drag){ if(drag.moved) suppressClick=true; drag=null; applyCursor(); }
+});
 
 canvas.addEventListener("click",e=>{
-  if(!S.work || panning) return;
+  if(suppressClick){ suppressClick=false; return; }   // this "click" was the end of a drag
+  if(!S.work) return;
   const [cx,cy]=evPos(e), [ix,iy]=c2i(cx,cy), m=S.mode;
   // near-peak select in any non-mark mode
   if(S.rPeaks.length && m!=="mark"){
@@ -523,9 +534,10 @@ canvas.addEventListener("dblclick",e=>{
 });
 canvas.addEventListener("wheel",e=>{
   if(!S.work) return; e.preventDefault();
-  if(e.ctrlKey){ const [cx,cy]=evPos(e); zoomAt(cx,cy, S.zoom*(e.deltaY<0?1.12:1/1.12)); }
-  else if(e.shiftKey){ S.panX-=e.deltaY; clampPan(); redraw(); }
-  else { S.panY-=e.deltaY; clampPan(); redraw(); }
+  if(e.ctrlKey){ const [cx,cy]=evPos(e); zoomAt(cx,cy, S.zoom*(e.deltaY<0?1.12:1/1.12)); return; }
+  let dx=e.deltaX, dy=e.deltaY;            // deltaX = touchpad two-finger horizontal swipe
+  if(e.shiftKey){ dx+=dy; dy=0; }          // Shift+wheel → horizontal for traditional mice
+  S.panX-=dx; S.panY-=dy; clampPan(); redraw();
 },{passive:false});
 
 function clickLevel(ix,iy){
