@@ -12,7 +12,12 @@ Hosted version: https://danielzavada.cz/hrvey
 4. **Mark**: click each R-peak (right-click or Delete to remove)
 5. **Export**: read HR / RMSSD / SDNN and save an Excel file
 
-Fill in the participant details on the right. Reopen a saved `.xlsx` to keep editing.
+Fill in the participant details on the right.
+
+## Review a past analysis
+
+Open the original PDF, then **Load analysis** and choose the exported `.xlsx`. Your level,
+calibration and R-peaks are restored over the scan, so you can re-check or continue the measurement.
 
 ## Run
 
