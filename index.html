@@ -76,13 +76,20 @@
       border-radius:6px;padding:3px 8px;font-size:12px;color:var(--muted);pointer-events:none
     }
 
-    /* ── Side panel ── */
-    .panel{
-      width:248px;flex:none;background:var(--panel);border-left:1px solid var(--line);
-      display:flex;flex-direction:column;min-height:0
-    }
+    /* ── Side panels ── */
+    .panel{flex:none;background:var(--panel);display:flex;flex-direction:column;min-height:0}
+    .panel-left{width:160px;border-right:1px solid var(--line)}
+    .panel-right{width:236px;border-left:1px solid var(--line)}
     .panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
       margin:0;padding:12px 14px 8px;font-weight:600}
+    .form{padding:2px 14px 14px;display:flex;flex-direction:column}
+    .form label{font-size:11px;color:var(--muted);margin:10px 0 3px}
+    .form input{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);
+      border-radius:8px;padding:8px 9px;-webkit-user-select:text;user-select:text}
+    .form input:focus{outline:none;border-color:var(--accent)}
+    .field-btn{font:inherit;text-align:left;color:var(--ink);background:var(--btn);border:1px solid var(--line);
+      border-radius:8px;padding:8px 9px;cursor:pointer;margin-top:3px}
+    .field-btn:hover{background:var(--btn-h)}
     .rrlist{flex:1;overflow:auto;margin:0;padding:0 6px;list-style:none;min-height:60px}
     .rrlist li{font-variant-numeric:tabular-nums;padding:4px 8px;border-radius:6px;font-size:13px;
       display:flex;justify-content:space-between;color:#2a363a}
@@ -150,23 +157,36 @@
   </header>
 
   <div class="workspace">
-    <div class="canvas-wrap empty" id="wrap">
-      <canvas id="ecg"></canvas>
-      <div class="zoombadge" id="zoomBadge" style="display:none">100%</div>
-    </div>
-    <aside class="panel">
+    <aside class="panel panel-left">
       <h2>RR intervals</h2>
       <ul class="rrlist" id="rrlist"><li class="empty">No peaks marked</li></ul>
       <div class="stats">
-        <span class="k">Heart rate</span><span class="v big" id="sHR">—</span>
-        <span class="k">Mean RR</span><span class="v" id="sMean">—</span>
+        <span class="k">HR</span><span class="v big" id="sHR">—</span>
+        <span class="k">Mean</span><span class="v" id="sMean">—</span>
         <span class="k">RMSSD</span><span class="v" id="sRMSSD">—</span>
         <span class="k">SDNN</span><span class="v" id="sSDNN">—</span>
       </div>
       <div class="meta">
-        <span class="k">Calibration</span><span class="v" id="mCal">not set</span>
+        <span class="k">Cal</span><span class="v" id="mCal">not set</span>
         <span class="k">Level</span><span class="v" id="mLevel">0.00°</span>
-        <span class="k">R-peaks</span><span class="v" id="mPeaks">0</span>
+        <span class="k">Peaks</span><span class="v" id="mPeaks">0</span>
+      </div>
+    </aside>
+    <div class="canvas-wrap empty" id="wrap">
+      <canvas id="ecg"></canvas>
+      <div class="zoombadge" id="zoomBadge" style="display:none">100%</div>
+    </div>
+    <aside class="panel panel-right">
+      <h2>Participant data</h2>
+      <div class="form">
+        <label for="fSubject">Subject ID</label>
+        <input id="fSubject" placeholder="ID001" autocomplete="off">
+        <label for="fDate">Date (DD/MM/YYYY)</label>
+        <input id="fDate" placeholder="DD/MM/YYYY" autocomplete="off">
+        <label for="fTime">Time (HH:MM)</label>
+        <input id="fTime" placeholder="HH:MM" autocomplete="off">
+        <label>Paper speed</label>
+        <button class="field-btn" id="fSpeed" title="Click to change paper speed">25 mm/s</button>
       </div>
     </aside>
   </div>
@@ -188,7 +208,7 @@
 const MIN_ZOOM = 0.05, MAX_ZOOM = 20, RENDER_SCALE = 2.0;
 const SELECT_PX = 20;      // image-space px to select a peak
 const RIGHTCLICK_PX = 30;  // canvas px to delete on right-click
-const MS_PER_SQUARE = 200; // one large ECG square = 200 ms at 25 mm/s
+// time per large square is derived from paper speed: msPerSquare() = 5000 / paperSpeed (200 ms @ 25 mm/s)
 const COL = {level:"#0e9aa0", cal:"#7c5cd6", peak:"#2563eb", rr:"#1f2b2f"};  // brand teal / violet / blue
 
 // PDF.js worker: real worker over http(s); fall back to main-thread on file://
@@ -206,7 +226,7 @@ const S = {
   levelPts:[], levelAngle:0,          // levelAngle stays 0 (rotation baked into image)
   calPts:[], pxPerMs:null,
   rPeaks:[], peakHistory:[], selectedPeak:null,
-  pdfName:"ecg", examPrefill:null,
+  pdfName:"ecg", examPrefill:null, paperSpeed:25,
   undo:[], redo:[],
 };
 
@@ -250,6 +270,7 @@ function xDist(p1, p2){
   return Math.abs(dx*Math.cos(S.levelAngle) + dy*Math.sin(S.levelAngle));
 }
 function peakKey(p){ return p[0]*Math.cos(S.levelAngle) + p[1]*Math.sin(S.levelAngle); }
+function msPerSquare(){ return 5000/(S.paperSpeed||25); }   // ms per large square at the current paper speed
 
 function calcRR(){
   if (S.pxPerMs == null || S.rPeaks.length < 2) return [];
@@ -288,7 +309,7 @@ function clampPan(){
 }
 function computeFit(){
   if(!S.work) return MIN_ZOOM;
-  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.min(cssW/S.work.w, cssH/S.work.h)*0.97));
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.min(cssW/S.work.w, cssH/S.work.h)*0.99));
 }
 function fitView(){
   if (!S.work) return;
@@ -505,16 +526,25 @@ function nearestPeak(ix,iy,thr){
   S.rPeaks.forEach((p,i)=>{ const d=Math.hypot(p[0]-ix,p[1]-iy); if(d<bd){bd=d;bi=i;} });
   return bd<=thr ? bi : -1;
 }
+function peakHitScreen(cx,cy){
+  // hit-test the whole lollipop (stick + lifted circle) in screen px; returns nearest peak index or -1
+  const s=uiScale(), L=Math.max(16,28*s), R=Math.max(5,6.5*s);
+  const padX=Math.max(18,R+10), tol=Math.max(10,R+4);
+  let bi=-1, bd=Infinity;
+  S.rPeaks.forEach((p,i)=>{ const [x,y]=i2c(p[0],p[1]);
+    if(Math.abs(cx-x)<=padX && cy>=y-L-R-tol && cy<=y+tol){ const d=Math.abs(cx-x); if(d<bd){bd=d;bi=i;} } });
+  return bi;
+}
 
 /* ───────────────────────── Mouse ───────────────────────── */
-function applyCursor(){ canvas.style.cursor = !S.work ? "default" : (S.mode==="view" ? "grab" : "crosshair"); }
+function applyCursor(){ canvas.style.cursor = !S.work ? "default" : (S.mode==="view" ? "default" : "crosshair"); }
 let drag=null, suppressClick=false, lastPos=null;
 canvas.addEventListener("mousemove",e=>{ const p=evPos(e); lastPos={x:p[0],y:p[1]}; });   // for Z-zoom-at-cursor
 canvas.addEventListener("mousedown",e=>{
   if(!S.work) return;
   // Pan with: middle button, left button in Select mode, or Shift+left in any mode.
   const panBtn = e.button===1 || (e.button===0 && (S.mode==="view" || e.shiftKey));
-  if(panBtn){ drag={x:e.clientX,y:e.clientY,moved:false}; canvas.style.cursor="grabbing"; e.preventDefault(); }
+  if(panBtn){ drag={x:e.clientX,y:e.clientY,moved:false}; e.preventDefault(); }
 });
 window.addEventListener("mousemove",e=>{
   if(!drag) return;
@@ -532,11 +562,11 @@ canvas.addEventListener("click",e=>{
   if(suppressClick){ suppressClick=false; return; }   // this "click" was the end of a drag
   if(!S.work) return;
   const [cx,cy]=evPos(e), [ix,iy]=c2i(cx,cy), m=S.mode;
-  // near-peak select in any non-mark mode
-  if(S.rPeaks.length && m!=="mark"){
-    const n=nearestPeak(ix,iy,SELECT_PX);
-    if(n>=0){ S.selectedPeak = S.selectedPeak===n?null:n; redraw();
-      setStatus(S.selectedPeak!=null?`Peak ${n+1} selected — press Delete to remove.`:"Select a peak."); return; }
+  // clicking on/near a peak selects it (in any mode)
+  const hit = S.rPeaks.length ? peakHitScreen(cx,cy) : -1;
+  if(hit>=0){
+    S.selectedPeak = S.selectedPeak===hit?null:hit; redraw();
+    setStatus(S.selectedPeak!=null?`Peak ${hit+1} selected — press Delete to remove.`:"Peak deselected."); return;
   }
   if(m==="level") clickLevel(ix,iy);
   else if(m==="calibrate") clickCal(ix,iy);
@@ -545,10 +575,9 @@ canvas.addEventListener("click",e=>{
 canvas.addEventListener("contextmenu",e=>{
   e.preventDefault();
   if(!S.work || S.mode!=="mark" || !S.rPeaks.length) return;
-  const [cx,cy]=evPos(e), [ix,iy]=c2i(cx,cy);
-  let bi=-1,bd=Infinity;
-  S.rPeaks.forEach((p,i)=>{ const d=Math.hypot((p[0]-ix)*S.zoom,(p[1]-iy)*S.zoom); if(d<bd){bd=d;bi=i;} });
-  if(bi>=0 && bd<=RIGHTCLICK_PX){ pushUndo();
+  const [cx,cy]=evPos(e);
+  const bi=peakHitScreen(cx,cy);
+  if(bi>=0){ pushUndo();
     const rem=S.rPeaks[bi];
     S.rPeaks.splice(bi,1);
     const h=S.peakHistory.findIndex(p=>p[0]===rem[0]&&p[1]===rem[1]); if(h>=0)S.peakHistory.splice(h,1);
@@ -601,21 +630,18 @@ function clickCal(ix,iy){
       if(!sq){ S.calPts=[]; redraw(); return; }
       const px=xDist(S.calPts[0],S.calPts[1]);
       if(px<1){ S.calPts=[]; redraw(); alertBox("Calibration error","Those two points are too close together. Pick two well-separated points."); return; }
-      pushUndo(); S.pxPerMs=px/(sq*MS_PER_SQUARE); redraw(); updatePanel();
+      pushUndo(); S.pxPerMs=px/(sq*msPerSquare()); redraw(); updatePanel();
       setStatus(`Calibrated to ${sq} large square${sq===1?"":"s"} (${S.pxPerMs.toFixed(3)} px/ms) — now switch to Mark Peaks.`, true);
     });
 }
 function editCal(){
-  const curSq=S.pxPerMs ? Math.max(1,Math.round(xDist(S.calPts[0],S.calPts[1])/S.pxPerMs/MS_PER_SQUARE)) : 5;
+  const curSq=S.pxPerMs ? Math.max(1,Math.round(xDist(S.calPts[0],S.calPts[1])/S.pxPerMs/msPerSquare())) : 5;
   promptSquares(curSq)
     .then(sq=>{ if(!sq) return; const px=xDist(S.calPts[0],S.calPts[1]); if(px<1) return;
-      pushUndo(); S.pxPerMs=px/(sq*MS_PER_SQUARE); redraw(); updatePanel();
+      pushUndo(); S.pxPerMs=px/(sq*msPerSquare()); redraw(); updatePanel();
       setStatus(`Re-calibrated to ${sq} large square${sq===1?"":"s"} (${S.pxPerMs.toFixed(3)} px/ms).`,true); });
 }
 function clickMark(ix,iy){
-  const n=nearestPeak(ix,iy,SELECT_PX);
-  if(n>=0){ S.selectedPeak=S.selectedPeak===n?null:n; redraw();
-    setStatus(S.selectedPeak!=null?`Peak ${n+1} selected — press Delete to remove.`:"Mark: click an R-peak."); return; }
   pushUndo();
   S.selectedPeak=null;
   S.rPeaks.push([ix,iy]); S.peakHistory.push([ix,iy]);
@@ -665,7 +691,7 @@ async function openPdfBuffer(buf, name){
     S.base=c; S.baseW=c.width; S.baseH=c.height;
     S.appliedRotationDeg=0; rebuildWork();
     clearAllSilent(); S.undo.length=0; S.redo.length=0;
-    S.pdfName=name; S.examPrefill=parseFilename(name);
+    S.pdfName=name; S.examPrefill=parseFilename(name); setExamFields(S.examPrefill);
     wrap.classList.remove("empty");
     fitView(); updatePanel(); setMode("view");
     setStatus(`Loaded "${name}" (${c.width}×${c.height}px). Set Level → Calibrate → Mark Peaks.`, true);
@@ -702,21 +728,43 @@ function parseFilename(name){
 
 /* ───────────────────────── Export ───────────────────────── */
 $("#btnExport").onclick=()=>doExport();
+$("#fSpeed").onclick=()=>{
+  promptNumber("Paper speed","Paper speed (mm/s):", S.paperSpeed).then(v=>{
+    if(!v) return; const old=S.paperSpeed; setSpeed(v);
+    if(S.pxPerMs!=null) S.pxPerMs*=v/old;          // keep timing consistent (px_per_ms ∝ paper speed)
+    redraw(); updatePanel(); setStatus(`Paper speed set to ${v} mm/s.`, true);
+  });
+};
+["#fSubject","#fDate","#fTime"].forEach(id=>$(id).addEventListener("input",persistSession));
 function exportData(exam){
   const rrs=calcRR(), vals=rrs.map(r=>r.ms);
   const mean=vals.reduce((a,b)=>a+b,0)/vals.length, hr=60000/mean, {rmssd,sdnn}=calcHRV(vals);
   return {rrs,vals,mean,hr,rmssd,sdnn,exam};
 }
-async function doExport(){
-  const exam=await promptExam(S.examPrefill);
-  if(!exam) return;
-  exportXLSX(exportData(exam));
+function getExam(){
+  const now=new Date();
+  const dd=String(now.getDate()).padStart(2,"0"), mm=String(now.getMonth()+1).padStart(2,"0");
+  return {
+    subjectId: ($("#fSubject").value||"").trim()||"unknown",
+    date:      ($("#fDate").value||"").trim()||`${dd}/${mm}/${now.getFullYear()}`,
+    time:      ($("#fTime").value||"").trim()||`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`,
+  };
 }
+function setExamFields(o){
+  const now=new Date();
+  const dd=String(now.getDate()).padStart(2,"0"), mm=String(now.getMonth()+1).padStart(2,"0");
+  o=o||{};
+  $("#fSubject").value=o.subjectId||"";
+  $("#fDate").value=o.date||`${dd}/${mm}/${now.getFullYear()}`;
+  $("#fTime").value=o.time||`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+}
+function setSpeed(v){ S.paperSpeed=v; $("#fSpeed").textContent=`${v} mm/s`; }
+function doExport(){ exportXLSX(exportData(getExam())); }
 function sessionJSON(){
   return {app:"HRVey", version:1, pdfName:S.pdfName,
     appliedRotationDeg:S.appliedRotationDeg, levelAngleDeg:0,
     levelPts:S.levelPts, calPts:S.calPts, pxPerMs:S.pxPerMs, rPeaks:S.rPeaks,
-    exam:S.examPrefill||null};
+    paperSpeed:S.paperSpeed, exam:getExam()};
 }
 function settingsRows(){
   // Calibration / level settings only (peak positions live in "RR Intervals").
@@ -725,9 +773,9 @@ function settingsRows(){
   const c1=S.calPts[0]||[null,null], c2=S.calPts[1]||[null,null];
   const keys=["ecg_file","image_rotation_applied_deg","level_angle_deg",
     "level_pt1_x","level_pt1_y","level_pt2_x","level_pt2_y",
-    "px_per_ms","cal_pt1_x","cal_pt1_y","cal_pt2_x","cal_pt2_y"];
+    "px_per_ms","cal_pt1_x","cal_pt1_y","cal_pt2_x","cal_pt2_y","paper_speed_mm_s"];
   const vals=[S.pdfName+".pdf", round(S.appliedRotationDeg,6), 0,
-    lv1[0],lv1[1],lv2[0],lv2[1], S.pxPerMs, c1[0],c1[1],c2[0],c2[1]];
+    lv1[0],lv1[1],lv2[0],lv2[1], S.pxPerMs, c1[0],c1[1],c2[0],c2[1], S.paperSpeed];
   return [keys, vals];
 }
 function round(x,n){ const f=Math.pow(10,n); return x==null?null:Math.round(x*f)/f; }
@@ -735,8 +783,8 @@ function exportXLSX(d){
   const wb=XLSX.utils.book_new();
   // Tab 1 — Results (summary, incl. the analyzed file name)
   const results=[
-    ["ecg_file","subject_id","date","time","heart_rate","mean_rr","rmssd","sdnn","n_peaks","n_intervals"],
-    [S.pdfName+".pdf", d.exam.subjectId, d.exam.date, d.exam.time, round(d.hr,1), round(d.mean,1),
+    ["ecg_file","subject_id","date","time","paper_speed_mm_s","heart_rate","mean_rr","rmssd","sdnn","n_peaks","n_intervals"],
+    [S.pdfName+".pdf", d.exam.subjectId, d.exam.date, d.exam.time, S.paperSpeed, round(d.hr,1), round(d.mean,1),
      d.rmssd==null?null:round(d.rmssd,1), d.sdnn==null?null:round(d.sdnn,1), S.rPeaks.length, d.vals.length]];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(results),"Results");
   // Tab 2 — RR Intervals + peak positions (one row per peak; this is what gets re-loaded)
@@ -767,8 +815,9 @@ async function loadAnalysisFile(file){
   try{
     if(/\.json$/i.test(file.name)){
       const o=JSON.parse(await file.text());
+      if(o.paperSpeed) setSpeed(o.paperSpeed);
       applyLoaded(o.appliedRotationDeg||0, null, o.levelPts||[], o.pxPerMs??null, o.calPts||[], o.rPeaks||[]);
-      if(o.exam) S.examPrefill=o.exam;
+      setExamFields(o.exam);
     } else {
       const wb=XLSX.read(new Uint8Array(await file.arrayBuffer()),{type:"array"});
       const legacy=wb.Sheets["Technical details"];   // desktop / old HRVey: settings + peaks together
@@ -785,6 +834,7 @@ async function loadAnalysisFile(file){
             const x=Number(r[1]),y=Number(r[2]); if(isFinite(x)&&isFinite(y))peaks.push([x,y]); } }
         loadFromParts(params, peaks);
       }
+      const ex=readExamFromWb(wb); if(ex) setExamFields(ex);
     }
     setStatus(`Loaded analysis — ${S.rPeaks.length} peaks restored.`, true);
   }catch(err){ console.error(err); alertBox("Load error",String(err&&err.message||err)); }
@@ -816,7 +866,18 @@ function loadFromParts(p, peaks){
   if(num("level_pt2_x")!=null)lp.push([num("level_pt2_x"),num("level_pt2_y")]);
   const cp=[]; if(num("cal_pt1_x")!=null)cp.push([num("cal_pt1_x"),num("cal_pt1_y")]);
   if(num("cal_pt2_x")!=null)cp.push([num("cal_pt2_x"),num("cal_pt2_y")]);
+  setSpeed(num("paper_speed_mm_s")||25);
   applyLoaded(num("image_rotation_applied_deg")||0, null, lp, num("px_per_ms"), cp, peaks);
+}
+function readExamFromWb(wb){
+  const ws=wb.Sheets["Results"]||wb.Sheets["Analysis"];   // results table (new "Results", desktop "Analysis")
+  if(!ws) return null;
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1}); if(rows.length<2) return null;
+  const h=(rows[0]||[]).map(x=>String(x||"").toLowerCase()), v=rows[1]||[];
+  const get=k=>{ const i=h.indexOf(k); return i>=0?v[i]:undefined; };
+  const sid=get("subject_id"), d=get("date"), t=get("time");
+  if(sid==null&&d==null&&t==null) return null;
+  return {subjectId:sid==null?"":String(sid), date:d==null?"":String(d), time:t==null?"":String(t)};
 }
 function applyLoaded(rotDeg, _ignored, levelPts, pxPerMs, calPts, peaks){
   S.appliedRotationDeg=rotDeg; rebuildWork();
@@ -849,35 +910,13 @@ function promptNumber(title,labelTxt,def){
     inp.addEventListener("keydown",e=>{ if(e.key==="Enter")ok(); if(e.key==="Escape"){close();res(null);} });
   });
 }
-function promptExam(pre){
-  pre=pre||{}; const now=new Date();
-  const dd=String(now.getDate()).padStart(2,"0"), mm=String(now.getMonth()+1).padStart(2,"0");
-  const date=pre.date||`${dd}/${mm}/${now.getFullYear()}`;
-  const time=pre.time||`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-  return new Promise(res=>{
-    const n=document.createElement("div"); n.className="modal";
-    n.innerHTML=`<h3>Exam details</h3><p class="sub">Saved with the exported results.</p>
-      <label>Subject ID</label><input data-id value="${pre.subjectId||""}" placeholder="ID001">
-      <div class="row"><div><label>Date (DD/MM/YYYY)</label><input data-date value="${date}"></div>
-      <div><label>Time (HH:MM)</label><input data-time value="${time}"></div></div>
-      <div class="actions"><button class="btn" data-c>Cancel</button><button class="btn primary" data-ok>Export</button></div>`;
-    const {bd,close}=openModal(n);
-    n.querySelector("[data-id]").focus();
-    n.querySelector("[data-ok]").onclick=()=>{ close(); res({
-      subjectId:n.querySelector("[data-id]").value.trim()||"unknown",
-      date:n.querySelector("[data-date]").value.trim(),
-      time:n.querySelector("[data-time]").value.trim()}); };
-    n.querySelector("[data-c]").onclick=()=>{close();res(null);};
-    bd.addEventListener("mousedown",e=>{if(e.target===bd){close();res(null);}});
-  });
-}
 function promptSquares(def){
-  // Returns the chosen number of large squares (callers multiply by MS_PER_SQUARE), or null if cancelled.
+  // Returns the chosen number of large squares (callers multiply by msPerSquare()), or null if cancelled.
   return new Promise(res=>{
     const n=document.createElement("div"); n.className="modal";
     n.innerHTML=`<h3>Calibrate time</h3>
       <p class="sub">How many large squares span the two points?<br>
-        <small style="color:var(--muted)">1 large square = ${MS_PER_SQUARE} ms (25 mm/s)</small></p>
+        <small style="color:var(--muted)">1 large square = ${msPerSquare()} ms (${S.paperSpeed} mm/s)</small></p>
       <div class="actions" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-top:4px">
         <button class="btn primary" data-sq="5">5 squares</button>
         <button class="btn primary" data-sq="10">10 squares</button>
@@ -958,8 +997,9 @@ async function restoreLast(){
   if(!ok) return;
   const s=await idbGet("lastSession");
   if(s && s.pdfName===last.name){
+    if(s.paperSpeed) setSpeed(s.paperSpeed);
     applyLoaded(s.appliedRotationDeg||0, null, s.levelPts||[], s.pxPerMs==null?null:s.pxPerMs, s.calPts||[], s.rPeaks||[]);
-    if(s.exam) S.examPrefill=s.exam;
+    setExamFields(s.exam);
   }
   setStatus(`Restored last file "${last.name}" — ${S.rPeaks.length} peak(s). Open another PDF to replace it.`, true);
 }
