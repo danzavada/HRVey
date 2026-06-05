@@ -351,7 +351,7 @@ function zoomAt(cx, cy, z){
   const nz = Math.max(S.fitZoom, Math.min(MAX_ZOOM, z));
   const [ix, iy] = c2i(cx, cy);
   S.zoom = nz; S.panX = cx - ix*nz; S.panY = cy - iy*nz;
-  clampPan(); redraw();
+  redraw();   // purely cursor-anchored — no edge snapping while zooming
 }
 
 /* ───────────────────────── Rendering ───────────────────────── */
