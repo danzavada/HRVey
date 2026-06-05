@@ -73,8 +73,20 @@
     .canvas-wrap.drag{outline:2px dashed var(--blue);outline-offset:-10px}
     .zoombadge{
       position:absolute;left:10px;bottom:10px;background:rgba(255,255,255,.82);border:1px solid var(--line);
-      border-radius:6px;padding:3px 8px;font-size:12px;color:var(--muted);pointer-events:none
+      border-radius:6px;padding:3px 8px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none
     }
+    .zoombadge:hover{color:var(--ink);border-color:var(--accent)}
+    .adjust{position:absolute;right:10px;bottom:10px;z-index:5}
+    .canvas-wrap.empty .adjust{display:none}
+    .adjust-btn{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.6);
+      color:var(--muted);cursor:pointer;opacity:.32;transition:opacity .15s;font-size:14px;line-height:24px;padding:0}
+    .adjust:hover .adjust-btn,.adjust-btn:focus{opacity:1}
+    .adjust-panel{position:absolute;right:0;bottom:32px;background:var(--panel);border:1px solid var(--line);
+      border-radius:10px;padding:10px;box-shadow:0 14px 40px rgba(15,30,35,.2);display:flex;flex-direction:column;gap:8px;width:172px}
+    .adjust-panel label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+    .adjust-panel input[type=range]{width:100%;accent-color:var(--accent-d)}
+    .adjust-reset{font:inherit;font-size:12px;color:var(--ink);background:var(--btn);border:1px solid var(--line);border-radius:7px;padding:5px;cursor:pointer}
+    .adjust-reset:hover{background:var(--btn-h)}
 
     /* ── Side panels ── */
     .panel{flex:none;background:var(--panel);display:flex;flex-direction:column;min-height:0}
@@ -91,16 +103,18 @@
       border-radius:8px;padding:8px 9px;cursor:pointer;margin-top:3px}
     .form select:focus{outline:none;border-color:var(--accent)}
     .rrlist{flex:1;overflow:auto;margin:0;padding:0 6px;list-style:none;min-height:60px}
-    .rrlist li{font-variant-numeric:tabular-nums;padding:4px 8px;border-radius:6px;font-size:13px;
+    .rrlist li{font-variant-numeric:tabular-nums;padding:4px 8px;border-radius:6px;font-size:13px;cursor:pointer;
       display:flex;justify-content:space-between;color:#2a363a}
     .rrlist li:nth-child(odd){background:rgba(0,0,0,.04)}
+    .rrlist li:hover{background:rgba(0,0,0,.07)}
+    .rrlist li.sel{background:rgba(43,177,166,.28);box-shadow:inset 2px 0 0 var(--accent-d)}
     .rrlist li .i{color:var(--muted)}
     .rrlist .empty{color:var(--muted);padding:8px;font-style:italic}
     .stats{border-top:1px solid var(--line);padding:10px 14px;display:grid;grid-template-columns:auto 1fr;
       gap:6px 10px;font-variant-numeric:tabular-nums}
     .stats .k{color:var(--muted)}
     .stats .v{text-align:right;font-weight:600}
-    .stats .v.big{color:var(--accent-d);font-size:15px}
+    .stats .v.big{color:var(--ink);font-size:15px}
     .meta{border-top:1px solid var(--line);padding:8px 14px;font-size:12px;color:var(--muted);
       display:grid;grid-template-columns:auto 1fr;gap:4px 8px}
     .meta .v{text-align:right;color:#2a363a}
@@ -174,7 +188,15 @@
     </aside>
     <div class="canvas-wrap empty" id="wrap">
       <canvas id="ecg"></canvas>
-      <div class="zoombadge" id="zoomBadge" style="display:none">100%</div>
+      <div class="zoombadge" id="zoomBadge" title="Click to fit (100%)" style="display:none">100%</div>
+      <div class="adjust" id="adjust">
+        <button class="adjust-btn" id="adjBtn" title="Image contrast / brightness" aria-label="Adjust image">◐</button>
+        <div class="adjust-panel" id="adjPanel" hidden>
+          <label>Contrast <input type="range" id="adjContrast" min="0.5" max="3" step="0.05" value="1"></label>
+          <label>Brightness <input type="range" id="adjBright" min="0.5" max="1.8" step="0.05" value="1"></label>
+          <button class="adjust-reset" id="adjReset">Reset</button>
+        </div>
+      </div>
     </div>
     <aside class="panel panel-right">
       <h2>Participant data</h2>
@@ -230,8 +252,8 @@ const S = {
   mode:"none",
   levelPts:[], levelAngle:0,          // levelAngle stays 0 (rotation baked into image)
   calPts:[], pxPerMs:null,
-  rPeaks:[], peakHistory:[], selectedPeak:null,
-  pdfName:"ecg", examPrefill:null, paperSpeed:25,
+  rPeaks:[], peakHistory:[], selectedPeaks:new Set(),
+  pdfName:"ecg", examPrefill:null, paperSpeed:25, contrast:1, brightness:1,
   undo:[], redo:[],
 };
 
@@ -345,15 +367,17 @@ function redraw(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,cssW,cssH);
   if (!S.work){ zoomBadge.style.display="none"; return; }
-  // image
+  // image (with optional contrast / brightness)
   ctx.imageSmoothingEnabled = S.zoom < 1.5;
   ctx.setTransform(dpr*S.zoom,0,0,dpr*S.zoom, dpr*S.panX, dpr*S.panY);
+  ctx.filter = (S.contrast!==1||S.brightness!==1) ? `contrast(${S.contrast}) brightness(${S.brightness})` : "none";
   ctx.drawImage(S.work.canvas,0,0);
+  ctx.filter = "none";
   // overlays (css-px space)
   ctx.setTransform(dpr,0,0,dpr,0,0);
   drawLevel(); drawCal(); drawPeaks();
   zoomBadge.style.display="block";
-  zoomBadge.textContent = Math.round(S.zoom*100) + "%";
+  zoomBadge.textContent = Math.round(S.zoom/Math.max(S.fitZoom,1e-9)*100) + "%";   // fit-to-screen = 100%
 }
 function dot(cx,cy,color,r){
   D.beginPath(); D.arc(cx,cy,r,0,7); D.fillStyle=color; D.fill();
@@ -419,7 +443,7 @@ function drawPeaks(){
     // beat circle, lifted up so the click spot stays visible
     dot(x,topY,COL.peak,R);
     label(x,topY-R-4*s,String(i+1),COL.peak,fs);
-    if(i===S.selectedPeak){
+    if(S.selectedPeaks.has(i)){
       const ring=R+Math.max(3,4*s);
       D.beginPath(); D.arc(x,topY,ring,0,7); D.strokeStyle="#000"; D.lineWidth=Math.max(1.5,2*s); D.stroke();
       D.beginPath(); D.arc(x,topY,ring,0,7); D.strokeStyle="#fff"; D.lineWidth=1; D.stroke();
@@ -464,7 +488,12 @@ function updatePanel(){
   } else {
     rrs.forEach((rr,i)=>{
       const li=document.createElement("li");
+      const peak=i+1;                       // RRk is the interval ending at peak (i+1)
+      if(S.selectedPeaks.has(peak)) li.classList.add("sel");
       li.innerHTML = `<span class="i">RR${String(i+1).padStart(2,"0")}</span><span>${rr.ms} ms</span>`;
+      li.onclick=()=>{ const a=document.activeElement; if(a&&/^(INPUT|TEXTAREA)$/.test(a.tagName)) a.blur();
+        if(S.selectedPeaks.has(peak)) S.selectedPeaks.delete(peak); else S.selectedPeaks.add(peak);
+        redraw(); updatePanel(); };
       list.appendChild(li);
     });
   }
@@ -500,7 +529,7 @@ function snapshot(){
   return JSON.stringify({
     appliedRotationDeg:S.appliedRotationDeg, levelPts:S.levelPts, levelAngle:S.levelAngle,
     calPts:S.calPts, pxPerMs:S.pxPerMs, rPeaks:S.rPeaks, peakHistory:S.peakHistory,
-    selectedPeak:S.selectedPeak,
+    selectedPeaks:[...S.selectedPeaks],
   });
 }
 function restore(str){
@@ -508,8 +537,8 @@ function restore(str){
   Object.assign(S, {
     appliedRotationDeg:o.appliedRotationDeg, levelPts:o.levelPts, levelAngle:o.levelAngle,
     calPts:o.calPts, pxPerMs:o.pxPerMs, rPeaks:o.rPeaks, peakHistory:o.peakHistory,
-    selectedPeak:o.selectedPeak,
   });
+  S.selectedPeaks=new Set(o.selectedPeaks||[]);
   rebuildWork(); redraw(); updatePanel();
 }
 function pushUndo(){ S.undo.push(snapshot()); if(S.undo.length>120) S.undo.shift(); S.redo.length=0; }
@@ -570,8 +599,9 @@ canvas.addEventListener("click",e=>{
   // clicking on/near a peak selects it (in any mode)
   const hit = S.rPeaks.length ? peakHitScreen(cx,cy) : -1;
   if(hit>=0){
-    S.selectedPeak = S.selectedPeak===hit?null:hit; redraw();
-    setStatus(S.selectedPeak!=null?`Peak ${hit+1} selected — press Delete to remove.`:"Peak deselected."); return;
+    S.selectedPeaks = (S.selectedPeaks.size===1 && S.selectedPeaks.has(hit)) ? new Set() : new Set([hit]);
+    redraw(); updatePanel();
+    setStatus(S.selectedPeaks.size?`Peak ${hit+1} selected — press Delete to remove.`:"Peak deselected."); return;
   }
   if(m==="level") clickLevel(ix,iy);
   else if(m==="calibrate") clickCal(ix,iy);
@@ -586,7 +616,7 @@ canvas.addEventListener("contextmenu",e=>{
     const rem=S.rPeaks[bi];
     S.rPeaks.splice(bi,1);
     const h=S.peakHistory.findIndex(p=>p[0]===rem[0]&&p[1]===rem[1]); if(h>=0)S.peakHistory.splice(h,1);
-    S.selectedPeak=null; redraw(); updatePanel(); setStatus(`Peak removed — ${S.rPeaks.length} left.`);
+    S.selectedPeaks=new Set(); redraw(); updatePanel(); setStatus(`Peak removed — ${S.rPeaks.length} left.`);
   }
 });
 canvas.addEventListener("dblclick",e=>{
@@ -648,7 +678,7 @@ function editCal(){
 }
 function clickMark(ix,iy){
   pushUndo();
-  S.selectedPeak=null;
+  S.selectedPeaks=new Set();
   S.rPeaks.push([ix,iy]); S.peakHistory.push([ix,iy]);
   S.rPeaks.sort((a,b)=>peakKey(a)-peakKey(b));
   redraw(); updatePanel();
@@ -656,11 +686,14 @@ function clickMark(ix,iy){
   setStatus(S.pxPerMs?`Peak placed — ${tot} peaks total.`:`Peak placed (${tot}). Calibrate to see intervals.`);
 }
 function deleteSelected(){
-  if(S.selectedPeak==null) return;
+  if(!S.selectedPeaks.size) return;
   pushUndo();
-  const rem=S.rPeaks[S.selectedPeak]; S.rPeaks.splice(S.selectedPeak,1);
-  const h=S.peakHistory.findIndex(p=>p[0]===rem[0]&&p[1]===rem[1]); if(h>=0)S.peakHistory.splice(h,1);
-  S.selectedPeak=null; redraw(); updatePanel(); setStatus(`Peak deleted — ${S.rPeaks.length} left.`);
+  const idx=[...S.selectedPeaks].sort((a,b)=>b-a);   // descending so splices don't shift indices
+  for(const i of idx){ const rem=S.rPeaks[i]; if(!rem) continue;
+    S.rPeaks.splice(i,1);
+    const h=S.peakHistory.findIndex(p=>p[0]===rem[0]&&p[1]===rem[1]); if(h>=0)S.peakHistory.splice(h,1); }
+  S.selectedPeaks=new Set();
+  redraw(); updatePanel(); setStatus(`Deleted ${idx.length} R-peak(s) — ${S.rPeaks.length} left.`);
 }
 
 /* ───────────────────────── File: open / rotate / reset ───────────────────────── */
@@ -695,7 +728,7 @@ async function openPdfBuffer(buf, name){
     await page.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;
     S.base=c; S.baseW=c.width; S.baseH=c.height;
     S.appliedRotationDeg=0; rebuildWork();
-    clearAllSilent(); S.undo.length=0; S.redo.length=0;
+    clearAllSilent(); S.undo.length=0; S.redo.length=0; setAdjust(1,1);
     S.pdfName=name; S.examPrefill=parseFilename(name); setExamFields(S.examPrefill);
     wrap.classList.remove("empty");
     fitView(); updatePanel(); setMode("view");
@@ -718,11 +751,11 @@ $("#btnReset").onclick=()=>{
   fitView(); updatePanel(); setStatus("Reset — all measurements cleared.");
 };
 $("#btnClearCal").onclick=()=>{ pushUndo(); S.calPts=[]; S.pxPerMs=null; redraw(); updatePanel(); setStatus("Calibration cleared. Ctrl+Z to undo."); };
-$("#btnClearPeaks").onclick=()=>{ pushUndo(); S.rPeaks=[]; S.peakHistory=[]; S.selectedPeak=null; redraw(); updatePanel(); setStatus("Peaks cleared. Ctrl+Z to undo."); };
+$("#btnClearPeaks").onclick=()=>{ pushUndo(); S.rPeaks=[]; S.peakHistory=[]; S.selectedPeaks=new Set(); redraw(); updatePanel(); setStatus("Peaks cleared. Ctrl+Z to undo."); };
 $("#btnFit").onclick=()=>fitView();
 function clearAllSilent(){
   S.levelPts=[]; S.levelAngle=0; S.calPts=[]; S.pxPerMs=null;
-  S.rPeaks=[]; S.peakHistory=[]; S.selectedPeak=null;
+  S.rPeaks=[]; S.peakHistory=[]; S.selectedPeaks=new Set();
 }
 function parseFilename(name){
   const m=name.match(/^(.+?)_(\d{4})_(\d{2})_(\d{2})_(\d{2})_(\d{2})$/);
@@ -751,6 +784,13 @@ $("#fSpeed").onchange=()=>{
   applySpeedChange(Number(sel.value));
 };
 ["#fSubject","#fDate","#fTime"].forEach(id=>$(id).addEventListener("input",persistSession));
+function setAdjust(c,b){ S.contrast=(c==null?1:c); S.brightness=(b==null?1:b);
+  $("#adjContrast").value=S.contrast; $("#adjBright").value=S.brightness; redraw(); }
+$("#adjBtn").onclick=()=>{ const p=$("#adjPanel"); p.hidden=!p.hidden; };
+$("#adjContrast").oninput=e=>{ S.contrast=parseFloat(e.target.value)||1; redraw(); persistSession(); };
+$("#adjBright").oninput=e=>{ S.brightness=parseFloat(e.target.value)||1; redraw(); persistSession(); };
+$("#adjReset").onclick=()=>{ setAdjust(1,1); persistSession(); };
+$("#zoomBadge").onclick=()=>fitView();
 function exportData(exam){
   const rrs=calcRR(), vals=rrs.map(r=>r.ms);
   const mean=vals.reduce((a,b)=>a+b,0)/vals.length, hr=60000/mean, {rmssd,sdnn}=calcHRV(vals);
@@ -790,7 +830,7 @@ function sessionJSON(){
   return {app:"HRVey", version:1, pdfName:S.pdfName,
     appliedRotationDeg:S.appliedRotationDeg, levelAngleDeg:0,
     levelPts:S.levelPts, calPts:S.calPts, pxPerMs:S.pxPerMs, rPeaks:S.rPeaks,
-    paperSpeed:S.paperSpeed, exam:getExam()};
+    paperSpeed:S.paperSpeed, contrast:S.contrast, brightness:S.brightness, exam:getExam()};
 }
 function settingsRows(){
   // Calibration / level settings only (peak positions live in "RR Intervals").
@@ -843,7 +883,7 @@ async function loadAnalysisFile(file){
       const o=JSON.parse(await file.text());
       if(o.paperSpeed) setSpeed(o.paperSpeed);
       applyLoaded(o.appliedRotationDeg||0, null, o.levelPts||[], o.pxPerMs??null, o.calPts||[], o.rPeaks||[]);
-      setExamFields(o.exam);
+      setExamFields(o.exam); if(o.contrast!=null) setAdjust(o.contrast,o.brightness);
     } else {
       const wb=XLSX.read(new Uint8Array(await file.arrayBuffer()),{type:"array"});
       const legacy=wb.Sheets["Technical details"];   // desktop / old HRVey: settings + peaks together
@@ -908,7 +948,7 @@ function readExamFromWb(wb){
 function applyLoaded(rotDeg, _ignored, levelPts, pxPerMs, calPts, peaks){
   S.appliedRotationDeg=rotDeg; rebuildWork();
   S.levelAngle=0; S.levelPts=levelPts; S.pxPerMs=pxPerMs??null; S.calPts=calPts;
-  S.rPeaks=peaks.slice(); S.peakHistory=peaks.slice(); S.selectedPeak=null;
+  S.rPeaks=peaks.slice(); S.peakHistory=peaks.slice(); S.selectedPeaks=new Set();
   S.rPeaks.sort((a,b)=>peakKey(a)-peakKey(b));
   S.undo.length=0; S.redo.length=0;
   fitView(); updatePanel();
@@ -1025,7 +1065,7 @@ async function restoreLast(){
   if(s && s.pdfName===last.name){
     if(s.paperSpeed) setSpeed(s.paperSpeed);
     applyLoaded(s.appliedRotationDeg||0, null, s.levelPts||[], s.pxPerMs==null?null:s.pxPerMs, s.calPts||[], s.rPeaks||[]);
-    setExamFields(s.exam);
+    setExamFields(s.exam); setAdjust(s.contrast, s.brightness);
   }
   setStatus(`Restored last file "${last.name}" — ${S.rPeaks.length} peak(s). Open another PDF to replace it.`, true);
 }
