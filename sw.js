@@ -1,5 +1,5 @@
 /* HRVey service worker — offline app shell (cache-first) */
-const CACHE = "hrvey-v2";
+const CACHE = "hrvey-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -9,7 +9,10 @@ const ASSETS = [
   "./vendor/xlsx.full.min.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
-  "./icons/icon-maskable-512.png"
+  "./icons/icon-maskable-512.png",
+  "./icons/favicon-16.png",
+  "./icons/favicon-32.png",
+  "./icons/favicon-180.png"
 ];
 
 self.addEventListener("install", e => {

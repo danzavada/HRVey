@@ -4,17 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <meta name="description" content="HRVey — an HRV analysis tool for 10-second ECG PDFs. Runs entirely in your browser.">
-  <meta name="theme-color" content="#efe7d6">
+  <meta name="theme-color" content="#eef2f4">
   <title>HRVey — HRV analysis for 10s ECG PDFs</title>
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="icons/icon-192.png">
-  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+  <link rel="apple-touch-icon" href="icons/favicon-180.png">
   <style>
     :root{
-      --bg:#efe7d6; --panel:#faf5ea; --panel2:#e8dfcd; --line:#ddd2bd;
-      --ink:#2c2823; --muted:#8a8170; --accent:#2f9e63; --accent-d:#268a54;
-      --green:#2ecc71; --orange:#e67e22; --red:#ef5350; --blue:#3b82f6;
-      --btn:#efe6d4; --btn-h:#e6dcc6;
+      /* palette derived from the HRVey logo: teal → periwinkle on white */
+      --bg:#eef2f4; --panel:#ffffff; --panel2:#e7edf0; --line:#d3dde1;
+      --ink:#1f2b2f; --muted:#6e828a; --accent:#2bb1a6; --accent-d:#1f988f;
+      --green:#2ecc71; --orange:#e67e22; --red:#ef5350; --blue:#6f7fd0;
+      --canvas-bg:#d8e2e6; --btn:#eef3f5; --btn-h:#dfe9ec;
     }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
@@ -52,13 +54,14 @@
     }
     .seg button:last-child{border-right:0}
     .seg button:hover{background:var(--btn)}
+    .seg button:disabled{opacity:.4;cursor:not-allowed}
+    .seg button:disabled:hover{background:transparent}
     .seg button.on{background:var(--accent-d);color:#fff;font-weight:600}
     .seg button kbd{font:inherit;opacity:.6;margin-left:5px}
 
     /* ── Workspace ── */
     .workspace{flex:1;display:flex;min-height:0}
-    .canvas-wrap{flex:1;position:relative;min-width:0;background:
-      repeating-conic-gradient(#e7ddca 0% 25%, #efe7d6 0% 50%) 50%/24px 24px}
+    .canvas-wrap{flex:1;position:relative;min-width:0;background:var(--canvas-bg)}
     #ecg{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
     .canvas-wrap.empty::after{
       content:"Open a 10-second ECG PDF to begin  ·  drag & drop, or press Ctrl+O";
@@ -80,7 +83,7 @@
       margin:0;padding:12px 14px 8px;font-weight:600}
     .rrlist{flex:1;overflow:auto;margin:0;padding:0 6px;list-style:none;min-height:60px}
     .rrlist li{font-variant-numeric:tabular-nums;padding:4px 8px;border-radius:6px;font-size:13px;
-      display:flex;justify-content:space-between;color:#463f34}
+      display:flex;justify-content:space-between;color:#2a363a}
     .rrlist li:nth-child(odd){background:rgba(0,0,0,.04)}
     .rrlist li .i{color:var(--muted)}
     .rrlist .empty{color:var(--muted);padding:8px;font-style:italic}
@@ -91,7 +94,7 @@
     .stats .v.big{color:var(--accent-d);font-size:15px}
     .meta{border-top:1px solid var(--line);padding:8px 14px;font-size:12px;color:var(--muted);
       display:grid;grid-template-columns:auto 1fr;gap:4px 8px}
-    .meta .v{text-align:right;color:#463f34}
+    .meta .v{text-align:right;color:#2a363a}
 
     /* ── Status bar ── */
     .statusbar{display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--panel2);
@@ -100,20 +103,20 @@
     .statusbar.ok .dot{background:var(--accent)}
 
     /* ── Modal ── */
-    .backdrop{position:fixed;inset:0;background:rgba(40,34,24,.45);display:flex;align-items:center;justify-content:center;z-index:50}
+    .backdrop{position:fixed;inset:0;background:rgba(18,28,32,.5);display:flex;align-items:center;justify-content:center;z-index:50}
     .modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;
-      padding:18px 18px 16px;min-width:300px;max-width:92vw;box-shadow:0 18px 60px rgba(50,40,25,.28)}
+      padding:18px 18px 16px;min-width:300px;max-width:92vw;box-shadow:0 18px 60px rgba(15,30,35,.25)}
     .modal h3{margin:0 0 4px;font-size:16px}
     .modal p.sub{margin:0 0 14px;color:var(--muted);font-size:13px}
     .modal label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
-    .modal input{width:100%;font:inherit;color:var(--ink);background:#fffdf8;
+    .modal input{width:100%;font:inherit;color:var(--ink);background:#ffffff;
       border:1px solid var(--line);border-radius:8px;padding:9px 10px;-webkit-user-select:text;user-select:text}
     .modal input:focus{outline:none;border-color:var(--accent)}
     .modal .row{display:flex;gap:10px}
     .modal .row>div{flex:1}
     .modal .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
     .menu{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:10px;
-      padding:6px;z-index:60;box-shadow:0 14px 40px rgba(50,40,25,.22);min-width:180px}
+      padding:6px;z-index:60;box-shadow:0 14px 40px rgba(15,30,35,.2);min-width:180px}
     .menu button{display:block;width:100%;text-align:left;background:transparent;border:0;color:var(--ink);
       font:inherit;padding:8px 10px;border-radius:7px;cursor:pointer}
     .menu button:hover{background:var(--btn)}
@@ -129,10 +132,10 @@
     <button class="btn" id="btnRotate" title="Rotate 90°" disabled>Rotate 90°</button>
     <span class="sep"></span>
     <span class="seg" id="modes">
-      <button data-mode="view" class="on">Select<kbd>S</kbd></button>
-      <button data-mode="level">Level<kbd>L</kbd></button>
-      <button data-mode="calibrate">Calibrate<kbd>C</kbd></button>
-      <button data-mode="mark">Mark<kbd>M</kbd></button>
+      <button data-mode="view" disabled>Select<kbd>S</kbd></button>
+      <button data-mode="level" disabled>Level<kbd>L</kbd></button>
+      <button data-mode="calibrate" disabled>Calibrate<kbd>C</kbd></button>
+      <button data-mode="mark" disabled>Mark<kbd>M</kbd></button>
     </span>
     <span class="sep"></span>
     <button class="btn" id="btnFit" title="Fit to window (Z toggles)" disabled>Fit</button>
@@ -183,6 +186,7 @@
 const MIN_ZOOM = 0.05, MAX_ZOOM = 20, RENDER_SCALE = 2.0;
 const SELECT_PX = 20;      // image-space px to select a peak
 const RIGHTCLICK_PX = 30;  // canvas px to delete on right-click
+const MS_PER_SQUARE = 200; // one large ECG square = 200 ms at 25 mm/s
 const COL = {green:"#2ecc71", orange:"#e67e22", red:"#ef5350", black:"#0a0a0a"};
 
 // PDF.js worker: real worker over http(s); fall back to main-thread on file://
@@ -196,7 +200,7 @@ const S = {
   work:null,                          // {canvas,w,h,fwd,inv} = base rotated by appliedRotationDeg
   appliedRotationDeg:0,
   zoom:1, panX:0, panY:0, fitZoom:MIN_ZOOM,
-  mode:"view",
+  mode:"none",
   levelPts:[], levelAngle:0,          // levelAngle stays 0 (rotation baked into image)
   calPts:[], pxPerMs:null,
   rPeaks:[], peakHistory:[], selectedPeak:null,
@@ -280,16 +284,20 @@ function clampPan(){
   S.panX = w <= cssW ? (cssW-w)/2 : Math.min(0, Math.max(cssW-w, S.panX));
   S.panY = h <= cssH ? (cssH-h)/2 : Math.min(0, Math.max(cssH-h, S.panY));
 }
+function computeFit(){
+  if(!S.work) return MIN_ZOOM;
+  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.min(cssW/S.work.w, cssH/S.work.h)*0.97));
+}
 function fitView(){
   if (!S.work) return;
-  const z = clampZoom(Math.min(cssW/S.work.w, cssH/S.work.h)*0.97);
-  S.fitZoom = z; S.zoom = z;
-  S.panX = (cssW - S.work.w*z)/2;
-  S.panY = (cssH - S.work.h*z)/2;
+  S.fitZoom = computeFit(); S.zoom = S.fitZoom;
+  S.panX = (cssW - S.work.w*S.zoom)/2;
+  S.panY = (cssH - S.work.h*S.zoom)/2;
   redraw();
 }
 function zoomAt(cx, cy, z){
-  const nz = clampZoom(z);
+  // fit-to-window is the maximum zoom-out — never go below it
+  const nz = Math.max(S.fitZoom, Math.min(MAX_ZOOM, z));
   const [ix, iy] = c2i(cx, cy);
   S.zoom = nz; S.panX = cx - ix*nz; S.panY = cy - iy*nz;
   clampPan(); redraw();
@@ -302,6 +310,7 @@ function resize(){
   cssW = r.width; cssH = r.height;
   canvas.width = Math.max(1,Math.round(cssW*dpr));
   canvas.height = Math.max(1,Math.round(cssH*dpr));
+  if(S.work){ S.fitZoom = computeFit(); if(S.zoom < S.fitZoom) S.zoom = S.fitZoom; clampPan(); }
   redraw();
 }
 function redraw(){
@@ -434,9 +443,11 @@ function updatePanel(){
   // toolbar enable state
   const has = !!S.work;
   for(const id of ["#btnRotate","#btnFit","#btnReset"]) $(id).disabled=!has;
+  document.querySelectorAll("#modes button").forEach(b=>b.disabled=!has);
   $("#btnExport").disabled = calcRR().length===0;
   $("#btnClearCal").disabled = !S.calPts.length && S.pxPerMs==null;
   $("#btnClearPeaks").disabled = !S.rPeaks.length;
+  persistSession();
 }
 function signed(x){ return (x>=0?"+":"")+x.toFixed(2); }
 
@@ -467,9 +478,9 @@ function setMode(m){
   document.querySelectorAll("#modes button").forEach(b=>b.classList.toggle("on",b.dataset.mode===m));
   const hint={view:"Select: click-drag to move · wheel to zoom (Ctrl+wheel) and pan · click a peak to select.",
     level:"Level: click two points on a horizontal feature (a grid line or baseline).",
-    calibrate:"Calibrate: click two points a known time apart (e.g. one large square = 200 ms).",
+    calibrate:"Calibrate: click two points spanning whole large squares — then pick how many (5 / 10 / custom).",
     mark:"Mark Peaks: click each R-peak. Right-click or Delete removes one."}[m];
-  setStatus(hint); applyCursor();
+  if(hint) setStatus(hint); applyCursor();
 }
 function nearestPeak(ix,iy,thr){
   let bi=-1, bd=Infinity;
@@ -563,20 +574,21 @@ function clickCal(ix,iy){
   S.calPts.push([ix,iy]);
   if(S.calPts.length<2){ redraw(); setStatus("Calibrate: click a second point."); return; }
   redraw();
-  promptNumber("Calibrate distance","Time between the two points (ms) — e.g. 200 for one large square at 25 mm/s:",200)
-    .then(ms=>{
-      if(!ms){ S.calPts=[]; redraw(); return; }
+  promptSquares(5)
+    .then(sq=>{
+      if(!sq){ S.calPts=[]; redraw(); return; }
       const px=xDist(S.calPts[0],S.calPts[1]);
       if(px<1){ S.calPts=[]; redraw(); alertBox("Calibration error","Those two points are too close together. Pick two well-separated points."); return; }
-      pushUndo(); S.pxPerMs=px/ms; redraw(); updatePanel();
-      setStatus(`Calibrated: ${S.pxPerMs.toFixed(3)} px/ms — now switch to Mark Peaks.`, true);
+      pushUndo(); S.pxPerMs=px/(sq*MS_PER_SQUARE); redraw(); updatePanel();
+      setStatus(`Calibrated to ${sq} large square${sq===1?"":"s"} (${S.pxPerMs.toFixed(3)} px/ms) — now switch to Mark Peaks.`, true);
     });
 }
 function editCal(){
-  promptNumber("Edit calibration","Time between the calibration points (ms):",
-      Math.round(xDist(S.calPts[0],S.calPts[1])/(S.pxPerMs||1)))
-    .then(ms=>{ if(!ms) return; const px=xDist(S.calPts[0],S.calPts[1]); if(px<1) return;
-      pushUndo(); S.pxPerMs=px/ms; redraw(); updatePanel(); setStatus(`Re-calibrated: ${S.pxPerMs.toFixed(3)} px/ms.`,true); });
+  const curSq=S.pxPerMs ? Math.max(1,Math.round(xDist(S.calPts[0],S.calPts[1])/S.pxPerMs/MS_PER_SQUARE)) : 5;
+  promptSquares(curSq)
+    .then(sq=>{ if(!sq) return; const px=xDist(S.calPts[0],S.calPts[1]); if(px<1) return;
+      pushUndo(); S.pxPerMs=px/(sq*MS_PER_SQUARE); redraw(); updatePanel();
+      setStatus(`Re-calibrated to ${sq} large square${sq===1?"":"s"} (${S.pxPerMs.toFixed(3)} px/ms).`,true); });
 }
 function clickMark(ix,iy){
   const n=nearestPeak(ix,iy,SELECT_PX);
@@ -614,10 +626,16 @@ wrap.addEventListener("drop",e=>{ e.preventDefault(); wrap.classList.remove("dra
 });
 
 async function openPdfFile(file){
+  const buf=await file.arrayBuffer();
+  const name=file.name.replace(/\.pdf$/i,"");
+  const ok=await openPdfBuffer(buf, name);
+  if(ok) persistPdf(buf, name);     // remember it for next visit
+}
+async function openPdfBuffer(buf, name){
   setStatus("Rendering PDF…");
   try{
-    const buf=await file.arrayBuffer();
-    const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
+    // pass a *copy* to PDF.js (it may transfer/neuter the buffer) so `buf` stays intact for storage
+    const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf).slice()}).promise;
     const page=await pdf.getPage(1);
     const vp=page.getViewport({scale:RENDER_SCALE});
     const c=document.createElement("canvas"); c.width=Math.round(vp.width); c.height=Math.round(vp.height);
@@ -625,12 +643,12 @@ async function openPdfFile(file){
     S.base=c; S.baseW=c.width; S.baseH=c.height;
     S.appliedRotationDeg=0; rebuildWork();
     clearAllSilent(); S.undo.length=0; S.redo.length=0;
-    S.pdfName=file.name.replace(/\.pdf$/i,"");
-    S.examPrefill=parseFilename(S.pdfName);
+    S.pdfName=name; S.examPrefill=parseFilename(name);
     wrap.classList.remove("empty");
     fitView(); updatePanel(); setMode("view");
-    setStatus(`Loaded "${file.name}" (${c.width}×${c.height}px). Set Level → Calibrate → Mark Peaks.`, true);
-  }catch(err){ console.error(err); alertBox("Could not open PDF", String(err&&err.message||err)); setStatus("Failed to open PDF."); }
+    setStatus(`Loaded "${name}" (${c.width}×${c.height}px). Set Level → Calibrate → Mark Peaks.`, true);
+    return true;
+  }catch(err){ console.error(err); alertBox("Could not open PDF", String(err&&err.message||err)); setStatus("Failed to open PDF."); return false; }
 }
 $("#btnRotate").onclick=()=>{
   if(!S.base) return;
@@ -843,6 +861,38 @@ function promptExam(pre){
     bd.addEventListener("mousedown",e=>{if(e.target===bd){close();res(null);}});
   });
 }
+function promptSquares(def){
+  // Returns the chosen number of large squares (callers multiply by MS_PER_SQUARE), or null if cancelled.
+  return new Promise(res=>{
+    const n=document.createElement("div"); n.className="modal";
+    n.innerHTML=`<h3>Calibrate time</h3>
+      <p class="sub">How many large squares span the two points?<br>
+        <small style="color:var(--muted)">1 large square = ${MS_PER_SQUARE} ms (25 mm/s)</small></p>
+      <div class="actions" style="justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-top:4px">
+        <button class="btn primary" data-sq="5">5 squares</button>
+        <button class="btn primary" data-sq="10">10 squares</button>
+        <button class="btn" data-custom>Custom…</button>
+        <button class="btn" data-c style="margin-left:auto">Cancel</button>
+      </div>
+      <div data-customwrap style="display:none">
+        <label>Number of large squares</label>
+        <input type="number" step="any" min="0.01" value="${def||5}">
+        <div class="err"></div>
+        <div class="actions"><button class="btn" data-back>Back</button><button class="btn primary" data-ok>OK</button></div>
+      </div>`;
+    const {bd,close}=openModal(n);
+    const done=sq=>{ close(); res(sq>0 ? sq : null); };
+    n.querySelectorAll("[data-sq]").forEach(b=>b.onclick=()=>done(parseFloat(b.dataset.sq)));
+    n.querySelector("[data-c]").onclick=()=>{ close(); res(null); };
+    const cw=n.querySelector("[data-customwrap]"), inp=cw.querySelector("input");
+    n.querySelector("[data-custom]").onclick=()=>{ cw.style.display="block"; inp.focus(); inp.select(); };
+    n.querySelector("[data-back]").onclick=()=>{ cw.style.display="none"; };
+    const ok=()=>{ const v=parseFloat(inp.value); if(!(v>0)){cw.querySelector(".err").textContent="Enter a positive number.";return;} done(v); };
+    n.querySelector("[data-ok]").onclick=ok;
+    inp.addEventListener("keydown",e=>{ if(e.key==="Enter")ok(); if(e.key==="Escape"){close();res(null);} });
+    bd.addEventListener("mousedown",e=>{ if(e.target===bd){close();res(null);} });
+  });
+}
 function alertBox(title,msg){
   const n=document.createElement("div"); n.className="modal";
   n.innerHTML=`<h3>${title}</h3><p class="sub">${msg}</p>
@@ -873,9 +923,38 @@ window.addEventListener("keydown",e=>{
   else if(e.key==="Delete"||e.key==="Backspace") deleteSelected();
 });
 
+/* ───────────────────────── Persistence (remember last file) ───────────────────────── */
+const DBN="hrvey-db", STORE="kv";
+function idbOpen(){ return new Promise((res,rej)=>{ const r=indexedDB.open(DBN,1);
+  r.onupgradeneeded=()=>r.result.createObjectStore(STORE);
+  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
+async function idbSet(k,v){ try{ const db=await idbOpen(); await new Promise((res,rej)=>{
+  const t=db.transaction(STORE,"readwrite"); t.objectStore(STORE).put(v,k);
+  t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); }); }catch(e){ /* storage unavailable/full — ignore */ } }
+async function idbGet(k){ try{ const db=await idbOpen(); return await new Promise((res,rej)=>{
+  const t=db.transaction(STORE,"readonly"); const q=t.objectStore(STORE).get(k);
+  q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error); }); }catch(e){ return null; } }
+function persistPdf(buf,name){ idbSet("lastPdf",{name, bytes:buf}); }
+let _persistT=0;
+function persistSession(){ if(!S.base) return; clearTimeout(_persistT);
+  _persistT=setTimeout(()=>idbSet("lastSession", sessionJSON()), 400); }   // debounced
+async function restoreLast(){
+  const last=await idbGet("lastPdf");
+  if(!last||!last.bytes) return;
+  const ok=await openPdfBuffer(last.bytes, last.name);
+  if(!ok) return;
+  const s=await idbGet("lastSession");
+  if(s && s.pdfName===last.name){
+    applyLoaded(s.appliedRotationDeg||0, null, s.levelPts||[], s.pxPerMs==null?null:s.pxPerMs, s.calPts||[], s.rPeaks||[]);
+    if(s.exam) S.examPrefill=s.exam;
+  }
+  setStatus(`Restored last file "${last.name}" — ${S.rPeaks.length} peak(s). Open another PDF to replace it.`, true);
+}
+
 /* ───────────────────────── Boot ───────────────────────── */
 new ResizeObserver(resize).observe(wrap);
 resize(); updatePanel();
+restoreLast();
 
 // PWA service worker (only over http/https)
 if("serviceWorker" in navigator && location.protocol.startsWith("http")){
