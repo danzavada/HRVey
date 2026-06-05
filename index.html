@@ -151,19 +151,18 @@
     #mobileGate{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
       background:var(--bg);color:var(--ink);padding:28px;text-align:center}
     #mobileGate[hidden]{display:none}
-    .gate-card{max-width:340px}
-    .gate-card img{border-radius:12px;display:block;margin:0 auto 14px}
-    .gate-card h1{margin:0 0 10px;font-family:"Trebuchet MS",Verdana,system-ui,sans-serif;font-weight:500;font-size:26px}
-    .gate-card p{margin:6px 0;color:var(--muted);font-size:15px;line-height:1.5}
+    .gate-card{max-width:360px}
+    .gate-card img{width:128px;height:128px;border-radius:26px;display:block;margin:0 auto 18px}
+    .gate-card h1{margin:0 0 12px;font-family:"Trebuchet MS",Verdana,system-ui,sans-serif;font-weight:500;font-size:40px;letter-spacing:.5px}
+    .gate-card p{margin:0;color:var(--muted);font-size:16px;line-height:1.5}
   </style>
 </head>
 <body>
 <div id="mobileGate" hidden>
   <div class="gate-card">
-    <img src="icons/icon-192.png" alt="HRVey" width="56" height="56">
+    <img src="icons/icon-512.png" alt="HRVey">
     <h1>HRVey</h1>
-    <p>HRVey is built for a desktop browser with a mouse.</p>
-    <p>Please open it on a computer.</p>
+    <p>This is a desktop tool. Please open it on a computer.</p>
   </div>
 </div>
 <div id="app">
@@ -250,11 +249,13 @@
 "use strict";
 (function(){
 // HRVey needs a desktop browser (precise mouse + file pickers). Show a notice on phones/tablets.
-const _coarseOnly = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches
-  && !window.matchMedia("(any-pointer: fine)").matches);
-const _uaMobile = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent)
-  || (navigator.platform==="MacIntel" && navigator.maxTouchPoints>1);
-if(_coarseOnly || _uaMobile){
+const _ua = navigator.userAgent || "";
+const _isMobile =
+  (navigator.userAgentData && navigator.userAgentData.mobile === true) ||
+  /Android|iPhone|iPod|Mobile|Windows Phone|webOS|BlackBerry|IEMobile|Opera Mini|Silk|Tablet|PlayBook/i.test(_ua) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||         // iPadOS reports as Mac
+  (window.matchMedia && matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches);
+if(_isMobile){
   const g=document.getElementById("mobileGate"); if(g) g.hidden=false;
   return;
 }
