@@ -66,10 +66,12 @@
     .canvas-wrap{flex:1;position:relative;min-width:0;background:var(--canvas-bg)}
     #ecg{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
     .canvas-wrap.empty::after{
-      content:"Open a 10-second ECG PDF to begin  ·  drag & drop, or press Ctrl+O";
+      content:"To begin, open a 10-second ECG file (.pdf)\A Click anywhere, drag & drop, or press Ctrl+O";
+      white-space:pre-line;line-height:1.7;
       position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-      color:var(--muted);font-size:15px;pointer-events:none;padding:24px;text-align:center;
+      color:var(--muted);font-size:15px;pointer-events:none;padding:24px;text-align:center;cursor:pointer;
     }
+    .canvas-wrap.empty{cursor:pointer}
     .canvas-wrap.drag{outline:2px dashed var(--blue);outline-offset:-10px}
     .zoombadge{
       position:absolute;left:10px;bottom:10px;background:rgba(255,255,255,.82);border:1px solid var(--line);
@@ -755,6 +757,7 @@ $("#btnLoad").onclick=()=>pickAndOpen("analysis");
 $("#fileInput").onchange=e=>{ const f=e.target.files[0]; if(!f) return; e.target.value="";
   if(pendingLoadKind==="pdf") openPdfFile(f); else loadAnalysisFile(f); };
 
+wrap.addEventListener("click",()=>{ if(!S.base) pickAndOpen("pdf"); });   // empty start screen → open a PDF
 wrap.addEventListener("dragover",e=>{e.preventDefault();wrap.classList.add("drag");});
 wrap.addEventListener("dragleave",()=>wrap.classList.remove("drag"));
 wrap.addEventListener("drop",e=>{ e.preventDefault(); wrap.classList.remove("drag");
