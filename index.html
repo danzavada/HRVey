@@ -1131,7 +1131,8 @@ function editShortcut(actionId){
     <label>Shortcut key</label>
     <button type="button" class="keycap" data-key>${keyLabel(CFG.keys[actionId])}</button>
     ${isZoom?`<label style="margin-top:14px">Zoom level &nbsp;<small style="color:var(--muted)">(100% = fit to screen)</small></label>
-      <input type="number" data-zoom min="100" max="5000" step="25" value="${CFG.zoomPct}">`:""}
+      <input type="number" data-zoom min="100" max="5000" step="25" value="${CFG.zoomPct}">
+      <button type="button" class="btn" data-setcur style="margin-top:8px">Set to current zoom</button>`:""}
     <div class="err"></div>
     <div class="actions">
       <button class="btn" data-reset style="margin-right:auto">Reset to default</button>
@@ -1151,6 +1152,10 @@ function editShortcut(actionId){
     cap.classList.remove("listening"); cap.textContent=keyLabel(pending); cap.blur(); showClash();
   });
   cap.addEventListener("blur",()=>{ if(cap.classList.contains("listening")){ cap.classList.remove("listening"); cap.textContent=keyLabel(pending); } });
+  const setcur=n.querySelector("[data-setcur]");
+  if(setcur){ setcur.disabled=!S.work;     // only meaningful once an ECG is loaded
+    setcur.onclick=()=>{ if(!S.work) return;
+      zin.value=Math.min(5000,Math.max(100,Math.round(S.zoom/Math.max(S.fitZoom,1e-9)*100))); }; }
   n.querySelector("[data-reset]").onclick=()=>{ pending=act.def; cap.textContent=keyLabel(pending); if(zin) zin.value=DEF_ZOOM_PCT; showClash(); };
   const ok=()=>{
     const clash=ACTIONS.find(a=>a.id!==actionId && CFG.keys[a.id]===pending);
