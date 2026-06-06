@@ -64,7 +64,7 @@
     /* ── Workspace ── */
     .workspace{flex:1;display:flex;min-height:0}
     .canvas-wrap{flex:1;position:relative;min-width:0;background:var(--canvas-bg)}
-    #ecg{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
+    #ecg{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:default;touch-action:none}
     .canvas-wrap.empty::after{
       content:"To begin, open a 10-second ECG file (.pdf)\A Click anywhere, drag & drop, or press Ctrl+O";
       white-space:pre-line;line-height:1.7;
@@ -608,7 +608,7 @@ function peakHitScreen(cx,cy){
 }
 
 /* ───────────────────────── Mouse ───────────────────────── */
-function applyCursor(){ canvas.style.cursor = !S.work ? "default" : (S.mode==="view" ? "default" : "crosshair"); }
+function applyCursor(){ canvas.style.cursor = "default"; }
 let drag=null, suppressClick=false, lastPos=null;
 canvas.addEventListener("mousemove",e=>{ const p=evPos(e); lastPos={x:p[0],y:p[1]}; });   // for Z-zoom-at-cursor
 canvas.addEventListener("mousedown",e=>{
