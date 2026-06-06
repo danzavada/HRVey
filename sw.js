@@ -1,5 +1,5 @@
 /* HRVey service worker — offline app shell (cache-first) */
-const CACHE = "hrvey-v6";
+const CACHE = "hrvey-v8";
 const ASSETS = [
   "./",
   "./index.html",

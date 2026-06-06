@@ -146,6 +146,11 @@
     .menu button:hover{background:var(--btn)}
     .menu .hint{color:var(--muted);font-size:11px;padding:4px 10px 6px}
     .err{color:#c0392b;font-size:12px;margin-top:8px;min-height:14px}
+    .keycap{display:inline-flex;align-items:center;justify-content:center;min-width:64px;height:42px;
+      font:inherit;font-weight:600;text-transform:uppercase;color:var(--ink);background:#fff;
+      border:1px solid var(--line);border-radius:8px;cursor:pointer;width:auto;padding:0 14px}
+    .keycap:focus{outline:none;border-color:var(--accent);background:var(--panel2)}
+    .keycap.listening{border-color:var(--accent);color:var(--muted);font-weight:400;text-transform:none}
 
     /* ── Desktop-only gate ── */
     #mobileGate{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
@@ -178,9 +183,9 @@
       <button data-mode="mark" disabled>Mark<kbd>M</kbd></button>
     </span>
     <span class="sep"></span>
-    <button class="btn" id="btnFit" title="Fit to window (Z toggles)" disabled>Fit</button>
+    <button class="btn" id="btnFit" title="Fit to window (Z toggles)" disabled>Fit to screen</button>
     <button class="btn" id="btnClearCal" disabled>Clear calibration</button>
-    <button class="btn" id="btnClearPeaks" disabled>Clear Peaks</button>
+    <button class="btn" id="btnClearPeaks" disabled>Clear peaks</button>
     <button class="btn" id="btnReset" disabled>Reset</button>
     <span class="spacer"></span>
     <button class="btn" id="btnLoad" title="Load a saved analysis">Load analysis</button>
@@ -358,10 +363,10 @@ function clampZoom(z){ return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z)); }
 function clampPan(){
   if (!S.work) return;
   const w = S.work.w*S.zoom, h = S.work.h*S.zoom, m = 48;
-  // Axis larger than the viewport → clamp to its edges (no empty space past the image).
-  // Axis smaller → keep at least m px on screen (so zoom stays anchored to the cursor and you can slide it).
-  S.panX = w >= cssW ? Math.min(0, Math.max(cssW-w, S.panX)) : Math.min(cssW-m, Math.max(m-w, S.panX));
-  S.panY = h >= cssH ? Math.min(0, Math.max(cssH-h, S.panY)) : Math.min(cssH-m, Math.max(m-h, S.panY));
+  // Slide freely in any direction — including pushing the image off-canvas —
+  // but always keep at least m px on screen so it can never be lost entirely.
+  S.panX = Math.min(cssW-m, Math.max(m-w, S.panX));
+  S.panY = Math.min(cssH-m, Math.max(m-h, S.panY));
 }
 function computeFit(){
   if(!S.work) return MIN_ZOOM;
@@ -1079,10 +1084,98 @@ function alertBox(title,msg){
   bd.addEventListener("mousedown",e=>{if(e.target===bd)close();});
 }
 
+/* ─────────────────── Customizable keyboard shortcuts ─────────────────── */
+const DEF_ZOOM_PCT = 800;   // Zoom-key target as % of fit-to-window (100% = fit)
+const ACTIONS = [
+  {id:"view",      label:"Select",     def:"s"},
+  {id:"level",     label:"Level",      def:"l"},
+  {id:"calibrate", label:"Calibrate",  def:"c"},
+  {id:"mark",      label:"Mark",       def:"m"},
+  {id:"zoom",      label:"Zoom / Fit", def:"z"},
+];
+const CFG = {keys:{}, zoomPct:DEF_ZOOM_PCT};
+ACTIONS.forEach(a=>CFG.keys[a.id]=a.def);
+
+const LS_KEY = "hrvey-shortcuts";
+function loadCfg(){ try{
+  const o = JSON.parse(localStorage.getItem(LS_KEY)||"{}");
+  if(o && o.keys) for(const a of ACTIONS) if(typeof o.keys[a.id]==="string") CFG.keys[a.id]=o.keys[a.id];
+  if(o && o.zoomPct>0) CFG.zoomPct=o.zoomPct;
+}catch(e){ /* corrupt/unavailable — keep defaults */ } }
+function saveCfg(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(CFG)); }catch(e){ /* full/blocked — ignore */ } }
+
+function keyLabel(k){ return k===" " ? "Space" : (k ? k.toUpperCase() : "—"); }
+function actionForKey(k){ for(const a of ACTIONS) if(CFG.keys[a.id]===k) return a.id; return null; }
+function refreshKbdHints(){
+  for(const a of ACTIONS){
+    if(a.id==="zoom") continue;
+    const b=document.querySelector(`#modes button[data-mode="${a.id}"]`); if(!b) continue;
+    const kbd=b.querySelector("kbd"); if(kbd) kbd.textContent=keyLabel(CFG.keys[a.id]);
+    b.title=`${a.label} (press ${keyLabel(CFG.keys[a.id])}) — right-click to customize`;
+  }
+  const fit=$("#btnFit");
+  if(fit) fit.title=`Zoom to ${CFG.zoomPct}% / fit (press ${keyLabel(CFG.keys.zoom)}) — right-click to customize`;
+}
+function toggleZoom(){
+  const target = Math.min(MAX_ZOOM, S.fitZoom * CFG.zoomPct/100);
+  if(S.zoom >= target-1e-3) fitView();
+  else { const p=lastPos||{x:cssW/2,y:cssH/2}; zoomAt(p.x,p.y,target); }
+}
+
+function editShortcut(actionId){
+  const act = ACTIONS.find(a=>a.id===actionId); if(!act) return;
+  const isZoom = actionId==="zoom";
+  const n=document.createElement("div"); n.className="modal";
+  n.innerHTML=`<h3>Customize — ${act.label}</h3>
+    <p class="sub">Click the box below, then press the key you want for this action.</p>
+    <label>Shortcut key</label>
+    <button type="button" class="keycap" data-key>${keyLabel(CFG.keys[actionId])}</button>
+    ${isZoom?`<label style="margin-top:14px">Zoom level &nbsp;<small style="color:var(--muted)">(100% = fit to screen)</small></label>
+      <input type="number" data-zoom min="100" max="5000" step="25" value="${CFG.zoomPct}">`:""}
+    <div class="err"></div>
+    <div class="actions">
+      <button class="btn" data-reset style="margin-right:auto">Reset to default</button>
+      <button class="btn" data-c>Cancel</button>
+      <button class="btn primary" data-ok>Save</button>
+    </div>`;
+  const {bd,close}=openModal(n);
+  const cap=n.querySelector("[data-key]"), err=n.querySelector(".err"), zin=n.querySelector("[data-zoom]");
+  let pending=CFG.keys[actionId];
+  const showClash=()=>{ const c=ACTIONS.find(a=>a.id!==actionId && CFG.keys[a.id]===pending);
+    err.textContent=c?`Note: "${keyLabel(pending)}" is currently used by ${c.label}.`:""; };
+  cap.addEventListener("click",()=>{ cap.classList.add("listening"); cap.textContent="Press a key…"; cap.focus(); });
+  cap.addEventListener("keydown",ev=>{ ev.preventDefault(); ev.stopPropagation();
+    if(ev.key==="Escape"){ cap.classList.remove("listening"); cap.textContent=keyLabel(pending); cap.blur(); return; }
+    if(ev.key.length!==1) return;          // only single printable keys (not Shift, Enter, F-keys…)
+    pending=ev.key.toLowerCase();
+    cap.classList.remove("listening"); cap.textContent=keyLabel(pending); cap.blur(); showClash();
+  });
+  cap.addEventListener("blur",()=>{ if(cap.classList.contains("listening")){ cap.classList.remove("listening"); cap.textContent=keyLabel(pending); } });
+  n.querySelector("[data-reset]").onclick=()=>{ pending=act.def; cap.textContent=keyLabel(pending); if(zin) zin.value=DEF_ZOOM_PCT; showClash(); };
+  const ok=()=>{
+    const clash=ACTIONS.find(a=>a.id!==actionId && CFG.keys[a.id]===pending);
+    if(clash){ err.textContent=`"${keyLabel(pending)}" is already used by ${clash.label}. Pick another key.`; return; }
+    CFG.keys[actionId]=pending;
+    if(zin){ const v=parseFloat(zin.value); if(v>=100) CFG.zoomPct=Math.min(5000,v); }
+    saveCfg(); refreshKbdHints(); close();
+    setStatus(`Shortcut for ${act.label} set to "${keyLabel(pending)}"${isZoom?` · zoom ${CFG.zoomPct}%`:""}.`, true);
+  };
+  n.querySelector("[data-ok]").onclick=ok;
+  n.querySelector("[data-c]").onclick=close;
+  bd.addEventListener("mousedown",e=>{ if(e.target===bd) close(); });
+}
+
 /* ───────────────────────── Keyboard ───────────────────────── */
-document.querySelectorAll("#modes button").forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+document.querySelectorAll("#modes button").forEach(b=>{
+  b.onclick=()=>setMode(b.dataset.mode);
+  b.addEventListener("contextmenu",e=>{ e.preventDefault(); editShortcut(b.dataset.mode); });
+});
+$("#btnFit").addEventListener("contextmenu",e=>{ e.preventDefault(); editShortcut("zoom"); });
+loadCfg(); refreshKbdHints();
+
 window.addEventListener("keydown",e=>{
   if(/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+  if(document.querySelector(".backdrop")) return;     // a modal owns the keyboard
   const k=e.key.toLowerCase();
   if(e.ctrlKey||e.metaKey){
     if(k==="o"){e.preventDefault();$("#btnOpen").click();}
@@ -1092,15 +1185,10 @@ window.addEventListener("keydown",e=>{
     return;
   }
   if(!S.work) return;
-  if(k==="s") setMode("view");
-  else if(k==="l") setMode("level");
-  else if(k==="c") setMode("calibrate");
-  else if(k==="m") setMode("mark");
-  else if(k==="z"){                            // Z: zoom to max at the cursor; press again to fit
-    if(S.zoom>=MAX_ZOOM-1e-3) fitView();
-    else { const p=lastPos||{x:cssW/2,y:cssH/2}; zoomAt(p.x,p.y,MAX_ZOOM); }
-  }
-  else if(e.key==="Delete"||e.key==="Backspace") deleteSelected();
+  if(e.key==="Delete"||e.key==="Backspace"){ deleteSelected(); return; }
+  const action=actionForKey(k);
+  if(action==="zoom") toggleZoom();
+  else if(action) setMode(action);
 });
 
 /* ───────────────────────── Persistence (remember last file) ───────────────────────── */
