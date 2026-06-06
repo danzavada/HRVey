@@ -174,6 +174,7 @@
   <header class="toolbar">
     <span class="brand"><img src="icons/icon-192.png" alt=""><span>HRVey</span></span>
     <button class="btn" id="btnOpen" title="Open PDF (Ctrl+O)">Open PDF</button>
+    <button class="btn" id="btnClose" title="Close current PDF and return to the start screen" disabled>Close PDF</button>
     <button class="btn" id="btnRotate" title="Rotate 90°" disabled>Rotate 90°</button>
     <span class="sep"></span>
     <span class="seg" id="modes">
@@ -549,7 +550,7 @@ function updatePanel(){
   $("#mPeaks").textContent = String(S.rPeaks.length);
   // toolbar enable state
   const has = !!S.work;
-  for(const id of ["#btnRotate","#btnFit","#btnReset"]) $(id).disabled=!has;
+  for(const id of ["#btnClose","#btnRotate","#btnFit","#btnReset"]) $(id).disabled=!has;
   document.querySelectorAll("#modes button").forEach(b=>b.disabled=!has);
   $("#btnExport").disabled = calcRR().length===0;
   $("#btnClearCal").disabled = !S.calPts.length && S.pxPerMs==null;
@@ -801,6 +802,19 @@ $("#btnReset").onclick=()=>{
   rebuildWork(); clearAllSilent(); S.undo.length=0; S.redo.length=0;
   fitView(); updatePanel(); setStatus("Reset — all measurements cleared.");
 };
+$("#btnClose").onclick=()=>closePdf();
+function closePdf(){
+  if(!S.base) return;
+  clearTimeout(_persistT);
+  idbSet("lastPdf",null); idbSet("lastSession",null);     // don't auto-restore it next visit
+  S.base=null; S.baseW=0; S.baseH=0; S.work=null; S.appliedRotationDeg=0;
+  clearAllSilent(); S.undo.length=0; S.redo.length=0;
+  S.zoom=1; S.panX=0; S.panY=0; S.fitZoom=MIN_ZOOM;
+  S.pdfName="ecg"; S.examPrefill=null; setExamFields(null); setAdjust(1,1);
+  setMode("none"); wrap.classList.add("empty");
+  redraw(); updatePanel();
+  setStatus("Open a PDF to begin — then Level → Calibrate → Mark Peaks → Export.");
+}
 $("#btnClearCal").onclick=()=>{ pushUndo(); S.calPts=[]; S.pxPerMs=null; redraw(); updatePanel(); setStatus("Calibration cleared. Ctrl+Z to undo."); };
 $("#btnClearPeaks").onclick=()=>{ pushUndo(); S.rPeaks=[]; S.peakHistory=[]; S.selectedPeaks=new Set(); redraw(); updatePanel(); setStatus("Peaks cleared. Ctrl+Z to undo."); };
 $("#btnFit").onclick=()=>fitView();
