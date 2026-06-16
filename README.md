@@ -41,8 +41,7 @@ For example `ID123_2026_06_16_14_30.pdf` is read as:
 
 Notes:
 
-- If `<subject>` starts with an `ID…` token, only that token is used as the Subject (anything
-  after it is ignored); otherwise the whole prefix is used.
+- The whole prefix before the date is used as the Subject.
 - The date is shown as `DD/MM/YYYY` and the time as `HH:MM`.
 - If the filename doesn't match this pattern, the Subject / Date / Time fields are left blank
   for you to fill in by hand.
