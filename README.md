@@ -22,6 +22,34 @@ can be reopened and verified later.
 
 Fill in the participant details on the right.
 
+## Naming
+
+HRVey can fill in the participant details automatically from the PDF filename. Name your file
+using this pattern (parts separated by underscores):
+
+```
+<subject>_YYYY_MM_DD_HH_MM.pdf
+```
+
+For example `ID123_2026_06_16_14_30.pdf` is read as:
+
+| Field   | Value                |
+|---------|----------------------|
+| Subject | `ID123`              |
+| Date    | `16/06/2026`         |
+| Time    | `14:30`              |
+
+Notes:
+
+- If `<subject>` starts with an `ID…` token, only that token is used as the Subject (anything
+  after it is ignored); otherwise the whole prefix is used.
+- The date is shown as `DD/MM/YYYY` and the time as `HH:MM`.
+- If the filename doesn't match this pattern, the Subject / Date / Time fields are left blank
+  for you to fill in by hand.
+
+The filename (and the resulting analysis filename) are also written into the exported workbook,
+so each record stays traceable back to its source scan.
+
 ## Review a past analysis
 
 Open the original PDF, then **Load analysis** and choose the exported `.xlsx`. Your level,

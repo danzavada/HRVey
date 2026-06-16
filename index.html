@@ -875,12 +875,10 @@ function getExam(){
   };
 }
 function setExamFields(o){
-  const now=new Date();
-  const dd=String(now.getDate()).padStart(2,"0"), mm=String(now.getMonth()+1).padStart(2,"0");
   o=o||{};
   $("#fSubject").value=o.subjectId||"";
-  $("#fDate").value=o.date||`${dd}/${mm}/${now.getFullYear()}`;
-  $("#fTime").value=o.time||`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  $("#fDate").value=o.date||"";
+  $("#fTime").value=o.time||"";
 }
 function setSpeed(v){
   v=Number(v)||25; S.paperSpeed=v;
@@ -918,9 +916,11 @@ function exportXLSX(d){
   const wb=XLSX.utils.book_new();
   // Tab 1 — Results (summary, incl. the analyzed file name)
   const results=[
-    ["ecg_file","subject_id","date","time","paper_speed_mm_s","heart_rate","mean_rr","rmssd","sdnn","n_peaks","n_intervals"],
-    [S.pdfName+".pdf", d.exam.subjectId, d.exam.date, d.exam.time, S.paperSpeed, round(d.hr,1), round(d.mean,1),
-     d.rmssd==null?null:round(d.rmssd,1), d.sdnn==null?null:round(d.sdnn,1), S.rPeaks.length, d.vals.length]];
+    ["ECG filename","ECG analysis filename","ECG date","ECG time","Heart rate","SDNN","RMSSD",
+     "subject_id","paper_speed_mm_s","mean_rr","n_peaks","n_intervals"],
+    [S.pdfName+".pdf", S.pdfName+".xlsx", d.exam.date, d.exam.time, round(d.hr,1),
+     d.sdnn==null?null:round(d.sdnn,1), d.rmssd==null?null:round(d.rmssd,1),
+     d.exam.subjectId, S.paperSpeed, round(d.mean,1), S.rPeaks.length, d.vals.length]];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(results),"Results");
   // Tab 2 — RR Intervals + peak positions (one row per peak; this is what gets re-loaded)
   const rr=[["peak_order","image_x","image_y","rr_to_next_ms","cumulative_time_ms"]];
@@ -1025,7 +1025,7 @@ function readExamFromWb(wb){
   const rows=XLSX.utils.sheet_to_json(ws,{header:1}); if(rows.length<2) return null;
   const h=(rows[0]||[]).map(x=>String(x||"").toLowerCase()), v=rows[1]||[];
   const get=k=>{ const i=h.indexOf(k); return i>=0?v[i]:undefined; };
-  const sid=get("subject_id"), d=get("date"), t=get("time");
+  const sid=get("subject_id"), d=get("ecg date")??get("date"), t=get("ecg time")??get("time");
   if(sid==null&&d==null&&t==null) return null;
   return {subjectId:sid==null?"":String(sid), date:d==null?"":String(d), time:t==null?"":String(t)};
 }
