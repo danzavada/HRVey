@@ -21,3 +21,7 @@ npm-debug.log*
 *.xlsx
 *.csv
 ID*_ecg_*
+
+# ── Exception: synthetic sample data, safe to commit ───────────────
+!EXAMPLE/
+!EXAMPLE/**
