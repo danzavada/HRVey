@@ -49,6 +49,8 @@
     button.btn:disabled{opacity:.4;cursor:not-allowed}
     button.btn.primary{background:var(--accent-d);border-color:var(--accent-d);color:#fff;font-weight:600}
     button.btn.primary:hover{background:var(--accent)}
+    button.btn.pdf{background:#b34740;border-color:#b34740;color:#fff;font-weight:600}
+    button.btn.pdf:hover{background:#c4554d}
     .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
     .seg button{
       font:inherit;color:var(--muted);background:transparent;border:0;
@@ -193,6 +195,7 @@
     <span class="spacer"></span>
     <button class="btn" id="btnLoad" title="Load a saved analysis">Load analysis</button>
     <button class="btn primary" id="btnExport" disabled>Export .xlsx</button>
+    <button class="btn pdf" id="btnExportPdf" title="Save the opened PDF, named from the participant fields" disabled>Export PDF</button>
   </header>
 
   <div class="workspace">
@@ -782,6 +785,7 @@ async function openPdfBuffer(buf, name){
     const c=document.createElement("canvas"); c.width=Math.round(vp.width); c.height=Math.round(vp.height);
     await page.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;
     S.base=c; S.baseW=c.width; S.baseH=c.height;
+    S.pdfBytes=buf;                                  // keep originals so "Export PDF" can re-save them
     S.appliedRotationDeg=0; rebuildWork();
     clearAllSilent(); S.undo.length=0; S.redo.length=0; setAdjust(1,1);
     S.pdfName=name; S.examPrefill=parseFilename(name); setExamFields(S.examPrefill);
@@ -810,7 +814,8 @@ function closePdf(){
   if(!S.base) return;
   clearTimeout(_persistT);
   idbSet("lastPdf",null); idbSet("lastSession",null);     // don't auto-restore it next visit
-  S.base=null; S.baseW=0; S.baseH=0; S.work=null; S.appliedRotationDeg=0;
+  S.base=null; S.baseW=0; S.baseH=0; S.work=null; S.appliedRotationDeg=0; S.pdfBytes=null;
+  $("#btnExportPdf").disabled=true;
   clearAllSilent(); S.undo.length=0; S.redo.length=0;
   S.zoom=1; S.panX=0; S.panY=0; S.fitZoom=MIN_ZOOM;
   S.pdfName="ecg"; S.examPrefill=null; setExamFields(null); setAdjust(1,1);
@@ -850,7 +855,12 @@ $("#fSpeed").onchange=()=>{
   }
   applySpeedChange(Number(sel.value));
 };
-["#fSubject","#fDate","#fTime"].forEach(id=>$(id).addEventListener("input",persistSession));
+// Export PDF stays disabled until a PDF is open AND all three participant fields are filled.
+function refreshPdfBtn(){
+  const filled=["#fSubject","#fDate","#fTime"].every(id=>($(id).value||"").trim());
+  $("#btnExportPdf").disabled = !S.pdfBytes || !filled;
+}
+["#fSubject","#fDate","#fTime"].forEach(id=>$(id).addEventListener("input",()=>{persistSession();refreshPdfBtn();}));
 function setAdjust(c,b){ S.contrast=(c==null?1:c); S.brightness=(b==null?1:b);
   $("#adjContrast").value=S.contrast; $("#adjBright").value=S.brightness; redraw(); }
 $("#adjBtn").onclick=()=>{ const p=$("#adjPanel"); p.hidden=!p.hidden; };
@@ -878,6 +888,7 @@ function setExamFields(o){
   $("#fSubject").value=o.subjectId||"";
   $("#fDate").value=o.date||"";
   $("#fTime").value=o.time||"";
+  refreshPdfBtn();
 }
 function setSpeed(v){
   v=Number(v)||25; S.paperSpeed=v;
@@ -892,6 +903,27 @@ function setSpeed(v){
   }
 }
 function doExport(){ exportXLSX(exportData(getExam())); }
+// Build the Subject_YYYY_MM_DD_HH_MM filename from the side fields (inverse of parseFilename).
+function buildExamName(){
+  const subj=($("#fSubject").value||"").trim();
+  const date=($("#fDate").value||"").trim();
+  const time=($("#fTime").value||"").trim();
+  if(!subj||!date||!time) return null;             // all three required — no fallbacks
+  const d=date.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const t=time.match(/^(\d{1,2}):(\d{2})$/);
+  if(!d||!t){ alertBox("Check the fields","Date must be DD/MM/YYYY and time HH:MM."); return null; }
+  const p=(s,n=2)=>String(s).padStart(n,"0");
+  return `${subj}_${d[3]}_${p(d[2])}_${p(d[1])}_${p(t[1])}_${p(t[2])}`;
+}
+$("#btnExportPdf").onclick=()=>{
+  if(!S.pdfBytes){ alertBox("No PDF open","Open a PDF before exporting one."); return; }
+  const name=buildExamName();
+  if(!name){ if($("#fSubject").value.trim()&&$("#fDate").value.trim()&&$("#fTime").value.trim()) return;
+    alertBox("Fill the fields","Subject ID, Date and Time must all be filled before exporting a PDF."); return; }
+  const blob=new Blob([S.pdfBytes],{type:"application/pdf"});
+  saveBlob(name+".pdf", blob, {description:"PDF document", accept:{"application/pdf":[".pdf"]}})
+    .then(ok=>{ if(ok) setStatus(`Exported "${name}.pdf".`, true); });
+};
 function sessionJSON(){
   return {app:"HRVey", version:1, pdfName:S.pdfName,
     appliedRotationDeg:S.appliedRotationDeg, levelAngleDeg:0,
