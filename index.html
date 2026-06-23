@@ -930,7 +930,7 @@ function sessionJSON(){
     levelPts:S.levelPts, calPts:S.calPts, pxPerMs:S.pxPerMs, rPeaks:S.rPeaks,
     paperSpeed:S.paperSpeed, contrast:S.contrast, brightness:S.brightness, exam:getExam()};
 }
-function settingsRows(){
+function settingsRows(base){
   // Calibration / level settings only (peak positions live in "RR Intervals").
   // Wide layout: a single header row + a single values row (one record per file → batch-friendly).
   const lv1=S.levelPts[0]||[null,null], lv2=S.levelPts[1]||[null,null];
@@ -938,18 +938,19 @@ function settingsRows(){
   const keys=["ecg_file","image_rotation_applied_deg","level_angle_deg",
     "level_pt1_x","level_pt1_y","level_pt2_x","level_pt2_y",
     "px_per_ms","cal_pt1_x","cal_pt1_y","cal_pt2_x","cal_pt2_y","paper_speed_mm_s"];
-  const vals=[S.pdfName+".pdf", round(S.appliedRotationDeg,6), 0,
+  const vals=[base+".pdf", round(S.appliedRotationDeg,6), 0,
     lv1[0],lv1[1],lv2[0],lv2[1], S.pxPerMs, c1[0],c1[1],c2[0],c2[1], S.paperSpeed];
   return [keys, vals];
 }
 function round(x,n){ const f=Math.pow(10,n); return x==null?null:Math.round(x*f)/f; }
 function exportXLSX(d){
   const wb=XLSX.utils.book_new();
+  const base=buildExamName()||S.pdfName;   // name from participant fields (the exported PDF), else the opened file
   // Tab 1 — Results (summary, incl. the analyzed file name)
   const results=[
     ["ECG filename","ECG analysis filename","ECG date","ECG time","Heart rate","SDNN","RMSSD",
      "subject_id","paper_speed_mm_s","mean_rr","n_peaks","n_intervals"],
-    [S.pdfName+".pdf", S.pdfName+".xlsx", d.exam.date, d.exam.time, round(d.hr,1),
+    [base+".pdf", base+".xlsx", d.exam.date, d.exam.time, round(d.hr,1),
      d.sdnn==null?null:round(d.sdnn,1), d.rmssd==null?null:round(d.rmssd,1),
      d.exam.subjectId, S.paperSpeed, round(d.mean,1), S.rPeaks.length, d.vals.length]];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(results),"Results");
@@ -963,10 +964,10 @@ function exportXLSX(d){
   });
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rr),"RR Intervals");
   // Tab 3 — Analysis (calibration / level settings only)
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(settingsRows()),"Analysis");
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(settingsRows(base)),"Analysis");
   const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
   const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-  saveBlob(S.pdfName+".xlsx", blob, {description:"Excel workbook",
+  saveBlob(base+".xlsx", blob, {description:"Excel workbook",
     accept:{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":[".xlsx"]}})
     .then(ok=>{ if(ok) setStatus("Exported Excel workbook (Results · RR Intervals · Analysis).", true); });
 }
