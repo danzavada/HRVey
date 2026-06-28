@@ -288,6 +288,7 @@ const S = {
   base:null, baseW:0, baseH:0,        // immutable rasterized page (canvas)
   work:null,                          // {canvas,w,h,fwd,inv} = base rotated by appliedRotationDeg
   appliedRotationDeg:0,
+  rotated90:false,                    // a 90° turn was applied (leveling tracked by appliedRotationDeg)
   zoom:1, panX:0, panY:0, fitZoom:MIN_ZOOM,
   mode:"none",
   levelPts:[], levelAngle:0,          // levelAngle stays 0 (rotation baked into image)
@@ -786,7 +787,7 @@ async function openPdfBuffer(buf, name){
     await page.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;
     S.base=c; S.baseW=c.width; S.baseH=c.height;
     S.pdfBytes=buf;                                  // keep originals so "Export PDF" can re-save them
-    S.appliedRotationDeg=0; rebuildWork();
+    S.appliedRotationDeg=0; S.rotated90=false; rebuildWork();
     clearAllSilent(); S.undo.length=0; S.redo.length=0; setAdjust(1,1);
     S.pdfName=name; S.examPrefill=parseFilename(name); setExamFields(S.examPrefill);
     wrap.classList.remove("empty");
@@ -798,7 +799,7 @@ async function openPdfBuffer(buf, name){
 $("#btnRotate").onclick=()=>{
   if(!S.base) return;
   const r=makeWork(S.base,90);              // rotate base 90° → new base
-  S.base=r.canvas; S.baseW=r.canvas.width; S.baseH=r.canvas.height;
+  S.base=r.canvas; S.baseW=r.canvas.width; S.baseH=r.canvas.height; S.rotated90=true;
   S.appliedRotationDeg=0; rebuildWork();
   clearAllSilent(); S.undo.length=0; S.redo.length=0;
   fitView(); updatePanel(); setStatus("Rotated 90°. Level / Calibrate / Peaks cleared.");
@@ -814,7 +815,7 @@ function closePdf(){
   if(!S.base) return;
   clearTimeout(_persistT);
   idbSet("lastPdf",null); idbSet("lastSession",null);     // don't auto-restore it next visit
-  S.base=null; S.baseW=0; S.baseH=0; S.work=null; S.appliedRotationDeg=0; S.pdfBytes=null;
+  S.base=null; S.baseW=0; S.baseH=0; S.work=null; S.appliedRotationDeg=0; S.rotated90=false; S.pdfBytes=null;
   $("#btnExportPdf").disabled=true;
   clearAllSilent(); S.undo.length=0; S.redo.length=0;
   S.zoom=1; S.panX=0; S.panY=0; S.fitZoom=MIN_ZOOM;
@@ -915,14 +916,49 @@ function buildExamName(){
   const p=(s,n=2)=>String(s).padStart(n,"0");
   return `${subj}_${d[3]}_${p(d[2])}_${p(d[1])}_${p(t[1])}_${p(t[2])}`;
 }
-$("#btnExportPdf").onclick=()=>{
+// zlib-wrapped deflate (matches PDF /FlateDecode), native — no dependency
+async function deflate(u8){
+  const cs=new CompressionStream("deflate"); const w=cs.writable.getWriter();
+  w.write(u8); w.close();
+  return new Uint8Array(await new Response(cs.readable).arrayBuffer());
+}
+// Build a one-page PDF wrapping the rotated canvas as a lossless FlateDecode RGB image.
+async function rasterPdfBlob(cv){
+  const w=cv.width, h=cv.height;
+  const rgba=cv.getContext("2d").getImageData(0,0,w,h).data;
+  const rgb=new Uint8Array(w*h*3);
+  for(let i=0,j=0;i<rgba.length;i+=4,j+=3){ rgb[j]=rgba[i]; rgb[j+1]=rgba[i+1]; rgb[j+2]=rgba[i+2]; }
+  const img=await deflate(rgb);
+  const pw=+(w/RENDER_SCALE).toFixed(2), ph=+(h/RENDER_SCALE).toFixed(2);   // points — preserve physical size
+  const enc=new TextEncoder(); const parts=[]; let len=0; const off=[];
+  const push=s=>{ const b=typeof s==="string"?enc.encode(s):s; parts.push(b); len+=b.length; };  // strings here are pure ASCII → byte length == char length
+  const obj=(n,body)=>{ off[n]=len; push(`${n} 0 obj\n${body}\nendobj\n`); };
+  push("%PDF-1.5\n"); push(new Uint8Array([0x25,0xE2,0xE3,0xCF,0xD3,0x0A]));   // binary marker
+  obj(1,"<< /Type /Catalog /Pages 2 0 R >>");
+  obj(2,"<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  obj(3,`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>`);
+  const content=`q ${pw} 0 0 ${ph} 0 0 cm /Im0 Do Q`;
+  obj(4,`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+  off[5]=len;
+  push(`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${w} /Height ${h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${img.length} >>\nstream\n`);
+  push(img); push("\nendstream\nendobj\n");
+  const xrefOff=len;
+  let xref="xref\n0 6\n0000000000 65535 f \n";
+  for(let n=1;n<=5;n++) xref+=String(off[n]).padStart(10,"0")+" 00000 n \n";
+  push(xref); push(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOff}\n%%EOF`);
+  return new Blob(parts,{type:"application/pdf"});
+}
+$("#btnExportPdf").onclick=async ()=>{
   if(!S.pdfBytes){ alertBox("No PDF open","Open a PDF before exporting one."); return; }
   const name=buildExamName();
   if(!name){ if($("#fSubject").value.trim()&&$("#fDate").value.trim()&&$("#fTime").value.trim()) return;
     alertBox("Fill the fields","Subject ID, Date and Time must all be filled before exporting a PDF."); return; }
-  const blob=new Blob([S.pdfBytes],{type:"application/pdf"});
+  // No rotation → re-save the original bytes untouched (lossless). Rotated → bake the on-screen image in.
+  const rotated = S.rotated90 || S.appliedRotationDeg!==0;
+  const blob = rotated ? await rasterPdfBlob(S.work.canvas)
+                       : new Blob([S.pdfBytes],{type:"application/pdf"});
   saveBlob(name+".pdf", blob, {description:"PDF document", accept:{"application/pdf":[".pdf"]}})
-    .then(ok=>{ if(ok) setStatus(`Exported "${name}.pdf".`, true); });
+    .then(ok=>{ if(ok) setStatus(`Exported "${name}.pdf"${rotated?" (rotation baked in)":""}.`, true); });
 };
 function sessionJSON(){
   return {app:"HRVey", version:1, pdfName:S.pdfName,
@@ -950,7 +986,7 @@ function exportXLSX(d){
   const results=[
     ["ECG filename","ECG analysis filename","ECG date","ECG time","Heart rate","SDNN","RMSSD",
      "subject_id","paper_speed_mm_s","mean_rr","n_peaks","n_intervals"],
-    [base+".pdf", base+".xlsx", d.exam.date, d.exam.time, round(d.hr,1),
+    [base+".pdf", base+".xlsx", (d.exam.date||"").replace(/\//g,"."), d.exam.time, round(d.hr,1),
      d.sdnn==null?null:round(d.sdnn,1), d.rmssd==null?null:round(d.rmssd,1),
      d.exam.subjectId, S.paperSpeed, round(d.mean,1), S.rPeaks.length, d.vals.length]];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(results),"Results");
