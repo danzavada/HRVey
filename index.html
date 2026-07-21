@@ -1284,8 +1284,10 @@ window.addEventListener("keydown",e=>{
   if(!S.work) return;
   if(e.key==="Delete"||e.key==="Backspace"){ deleteSelected(); return; }
   const action=actionForKey(k);
+  if(!action) return;
+  e.preventDefault();   // stop Space/Enter from also re-clicking the focused button
   if(action==="zoom") toggleZoom();
-  else if(action) setMode(action);
+  else setMode(action);
 });
 
 /* ───────────────────────── Persistence (remember last file) ───────────────────────── */
