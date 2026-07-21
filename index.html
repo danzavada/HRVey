@@ -1023,7 +1023,7 @@ async function saveBlob(name, blob, accept){
   // FSA save remembers the last folder (shared id "hrvey"); fall back to a download otherwise
   if(window.showSaveFilePicker){
     try{
-      const opts={ id:"hrvey", suggestedName:name, startIn:"documents" };
+      const opts={ id:"hrveySave", suggestedName:name, startIn:"documents" };  // own id → export folder remembered separately from the open-PDF folder
       if(accept) opts.types=[accept];
       const h=await window.showSaveFilePicker(opts);
       const w=await h.createWritable(); await w.write(blob); await w.close();
