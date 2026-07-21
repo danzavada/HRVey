@@ -981,8 +981,9 @@ function settingsRows(base){
 function round(x,n){ const f=Math.pow(10,n); return x==null?null:Math.round(x*f)/f; }
 // Copy the 7 Results values (no headers) tab-separated → pastes as 7 cells in Google Sheets.
 function copyResultRow(base,d){
+  const c=x=>x==null?"":String(x).replace(".",",");   // comma decimal for Sheets (cs locale)
   const row=[base+".pdf", base+".xlsx", (d.exam.date||"").replace(/\//g,"."), d.exam.time,
-    round(d.hr,1), round(d.sdnn,1), round(d.rmssd,1)].join("\t");   // null→"" via join
+    c(round(d.hr,1)), c(round(d.sdnn,1)), c(round(d.rmssd,1))].join("\t");
   navigator.clipboard&&navigator.clipboard.writeText(row).catch(()=>{});
 }
 function exportXLSX(d){
